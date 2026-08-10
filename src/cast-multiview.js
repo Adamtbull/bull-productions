@@ -97,7 +97,9 @@ export function createCastMultiviewController({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || `Character start failed (${response.status}).`);
       status.textContent = data.mode === 'multiview' ? 'Multiview body started…' : 'Body started…';
-      await onStart?.({ ...data, views });
+      const filename = state.front.filename || 'Cast';
+      const name = filename.replace(/\.[^.]+$/, '') || 'Cast';
+      await onStart?.({ ...data, views, name });
     } catch (error) {
       status.textContent = '';
       onError(error?.message || 'Character generation failed.');
