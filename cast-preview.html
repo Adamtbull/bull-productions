@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Bull Productions — Cast Preview</title>
+  <style>
+    :root { --bg:#14171d; --panel:#1b2029; --line:#303743; --accent:#f0a63e; --text:#eceae3; --muted:#9096a2; }
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;padding:20px}
+    .wrap{max-width:860px;margin:0 auto}.top{margin-bottom:18px}.top h1{font-size:28px;margin:0 0 6px}.top p{color:var(--muted);margin:0}
+    .btn{border:1px solid var(--line);background:#11151b;color:var(--text);border-radius:8px;padding:10px 13px;font-weight:700}.btn.small{padding:7px 9px;font-size:12px}.btn.ghost{color:var(--muted)}.btn.primary{width:100%;background:var(--accent);color:#18130a;border-color:#b97f14;margin-top:14px;padding:13px}.btn:disabled{opacity:.45}
+    #cast-root[hidden]{display:none}.cast-panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}.cast-head{display:flex;justify-content:space-between;gap:12px;align-items:start}.cast-head h3{margin:2px 0 0;font-size:22px}.cast-kicker,.cast-view-label{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);font-weight:800}.cast-help,.cast-guidance{color:var(--muted);font-size:14px}.cast-view-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:16px 0}.cast-view{border:1px solid var(--line);border-radius:10px;padding:10px}.cast-preview{width:100%;aspect-ratio:3/4;border:1px dashed var(--line);background:#10141a center/contain no-repeat;color:var(--muted);border-radius:8px;margin:8px 0}.cast-preview.has-image span{background:rgba(0,0,0,.6);padding:4px 7px;border-radius:5px}.cast-view-actions{display:flex;gap:7px}.cast-status{margin-top:10px;color:var(--accent);font-size:13px;min-height:20px}.pipeline{margin-top:18px;padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}.stage{color:var(--muted);margin:4px 0}.stage.active{color:var(--accent);font-weight:700}.result{margin-top:16px;display:none}.result.on{display:block}.result img{width:140px;max-height:180px;object-fit:contain;border:1px solid var(--line);border-radius:8px;background:#0d1015}.result code{display:block;word-break:break-all;color:var(--muted);font-size:11px;margin-top:8px}
+    @media(min-width:720px){.cast-view-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top"><h1>Bull Productions — Cast Preview</h1><p>Recovery branch test harness. This page is not production.</p></div>
+    <button class="btn primary" id="open-cast">+ Cast</button>
+    <div id="cast-root" hidden></div>
+    <div class="pipeline" id="pipeline" hidden>
+      <div class="stage" data-stage="model">1. Body</div>
+      <div class="stage" data-stage="check">2. Bones</div>
+      <div class="stage" data-stage="rig">3. Rigging</div>
+      <div class="stage" data-stage="anim">4. Moves</div>
+      <div class="stage" data-stage="save">5. Saving to Bull library</div>
+    </div>
+    <div class="result" id="result"><h2>Character saved</h2><img id="result-img" alt="Character preview" /><code id="result-url"></code></div>
+  </div>
+<script type="module">
+  import { createCastMultiviewController } from './src/cast-multiview.js';
+  const root = document.getElementById('cast-root');
+  const pipeline = document.getElementById('pipeline');
+  const result = document.getElementById('result');
+  const controller = createCastMultiviewController({
+    root,
+    onError: (message) => alert(message),
+    onStart: async ({ task_id, name }) => {
+      pipeline.hidden = false;
+      setStage('model');
+      const done = await runPipeline(task_id, name);
+      if (done?.cast) {
+        setStage('save');
+        document.getElementById('result-img').src = done.cast.preview_url || '';
+        document.getElementById('result-url').textContent = done.cast.glb_url || '';
+        result.classList.add('on');
+      }
+    },
+  });
+  document.getElementById('open-cast').onclick = () => controller.open();
+
+  function setStage(stage){ document.querySelectorAll('[data-stage]').forEach(el=>el.classList.toggle('active',el.dataset.stage===stage)); }
+  async function runPipeline(taskId, name){
+    let st = { stage:'model', id:taskId, model:taskId };
+    for (;;) {
+      await new Promise(r=>setTimeout(r,4000));
+      const qs = new URLSearchParams({ stage:st.stage, id:st.id, model:st.model, name });
+      const r = await fetch('/api/cast-task?' + qs.toString());
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `Cast pipeline failed (${r.status}).`);
+      if (d.done) return d;
+      st = { stage:d.stage || st.stage, id:d.id || st.id, model:d.model || st.model };
+      setStage(st.stage);
+    }
+  }
+</script>
+</body>
+</html>
