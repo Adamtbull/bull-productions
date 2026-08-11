@@ -119,12 +119,14 @@ export async function listWorlds() {
     const raw = pick(d, 'worlds', 'items', 'results', 'data') || (Array.isArray(d) ? d : []);
     const list = (Array.isArray(raw) ? raw : []).map(normalizeWorld).filter(Boolean);
     console.log(`worldlabs: list via ${attempt.method} ${attempt.path} returned ${list.length} world(s)`);
-    // Reaching the endpoint is not the same as reading it: the first response
-    // carried ids and names but null splats and collider, so the field names
-    // still have to be confirmed rather than guessed. Log one raw item — it is
-    // scene metadata, not credentials — until the mapping is settled.
+    // The asset mapping is settled now, so the whole item no longer needs
+    // logging. world_prompt is still worth seeing: a stored world carries the
+    // prompt as a nested object, which is the likeliest reason a flat
+    // text_prompt is rejected by worlds:generate with a 422.
     const sample = Array.isArray(raw) ? raw[0] : null;
-    if (sample) console.log('worldlabs: raw list item —', JSON.stringify(sample).slice(0, 1800));
+    if (sample?.world_prompt) {
+      console.log('worldlabs: world_prompt shape —', JSON.stringify(sample.world_prompt).slice(0, 900));
+    }
     return list;
   }
 
@@ -134,9 +136,24 @@ export async function listWorlds() {
   throw err;
 }
 
-// Splats arrive keyed by resolution. The frontend's Fast/Full toggle just needs
-// a low and a high entry, so collapse whatever shape arrives into that.
-function normalizeSplats(source) {
+// Confirmed against a real response rather than guessed. Marble nests the useful
+// parts under `assets`:
+//
+//   assets.splats.spz_urls        { "100k": url, "150k": url, "500k": url, "full_res": url }
+//   assets.splats.semantics_metadata  { metric_scale_factor, ground_plane_offset }
+//   assets.mesh.collider_mesh_url
+//   assets.imagery.pano_url
+//   assets.thumbnail_url
+//   assets.caption
+//   world_prompt.text_prompt
+//
+// spz_urls is already keyed the way the viewer's Fast/Full toggle expects, so it
+// passes straight through. The flat fallbacks below are kept only so an
+// unnested or older response still reads.
+function normalizeSplats(source, assets) {
+  const spz = assets?.splats?.spz_urls;
+  if (spz && typeof spz === 'object' && Object.keys(spz).length) return spz;
+
   const splats = pick(source, 'splats', 'splat_urls', 'gaussians');
   if (!splats) return null;
 
@@ -159,14 +176,24 @@ export function normalizeWorld(raw) {
   const worldId = pick(source, 'world_id', 'id', 'name');
   if (!worldId) return null;
 
+  const assets = source.assets || {};
+
+  // display_name is often empty; leave it empty rather than inventing a title,
+  // because the frontend already falls back to the caption and only then to
+  // "Untitled set" — filling it here would hide the more useful caption.
   return {
     world_id: String(worldId).replace(/^worlds\//, ''),
-    display_name: pick(source, 'display_name', 'title', 'name') || 'Untitled set',
-    caption: pick(source, 'caption', 'description', 'text_prompt') || '',
-    thumbnail_url: pick(source, 'thumbnail_url', 'thumbnail', 'preview_url', 'image_url'),
-    splats: normalizeSplats(source),
-    collider_url: pick(source, 'collider_url', 'collider', 'collision_mesh_url', 'mesh_url'),
-    floor_y: pick(source, 'floor_y', 'ground_y', 'ground_plane_y'),
+    display_name: pick(source, 'display_name', 'title') || '',
+    caption: pick(assets, 'caption')
+      || pick(source.world_prompt || {}, 'text_prompt')
+      || pick(source, 'caption', 'description') || '',
+    thumbnail_url: pick(assets, 'thumbnail_url')
+      || pick(source, 'thumbnail_url', 'thumbnail', 'preview_url', 'image_url'),
+    splats: normalizeSplats(source, assets),
+    collider_url: pick(assets.mesh || {}, 'collider_mesh_url', 'hq_mesh_url', 'full_res_mesh_url')
+      || pick(source, 'collider_url', 'collider', 'collision_mesh_url', 'mesh_url'),
+    floor_y: pick(assets.splats?.semantics_metadata || {}, 'ground_plane_offset')
+      ?? pick(source, 'floor_y', 'ground_y', 'ground_plane_y'),
   };
 }
 
