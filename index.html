@@ -308,6 +308,7 @@
       font-size: 11px;
       color: var(--dust);
     }
+    #hint.alert { color: var(--rec); }
     /* Dress mode: shelf + strips */
     .strip {
       position: absolute; left: 0; right: 0;
@@ -1001,6 +1002,16 @@
     const modeBtn = document.getElementById("mode-toggle");
     const floorBtn = document.getElementById("floor-toggle");
     const hintEl = document.getElementById("hint");
+    // Problems surface on the hint line instead of a blocking alert() box: the
+    // message reads in-scene in plain text, and the red tint drops away on its
+    // own. The technical detail belongs in the console, not in Adam's face.
+    let hintAlertTimer = null;
+    function flashHint(msg) {
+      hintEl.textContent = msg;
+      hintEl.classList.add("alert");
+      clearTimeout(hintAlertTimer);
+      hintAlertTimer = setTimeout(() => hintEl.classList.remove("alert"), 7000);
+    }
     const shelfEl = document.getElementById("shelf");
     const shelfRow = document.getElementById("shelf-row");
     const editStrip = document.getElementById("edit-strip");
@@ -1418,7 +1429,7 @@
         if (!res.ok) throw new Error(started.error || `Prop start failed (${res.status}).`);
         const done = await pollProp(started.task_id, name);
         if (done.error) throw new Error(done.error);
-        if (done.warn) alert(done.warn);
+        if (done.warn) flashHint(done.warn);
 
         let rec;
         if (done.prop) {
@@ -1443,7 +1454,8 @@
         armedPropId = rec.id;
         hintEl.textContent = "Tap the grid, or use Place here";
       } catch (err) {
-        alert(err.message || "Prop generation failed.");
+        console.error("prop generation:", err);
+        flashHint(err.message || "Prop generation failed.");
       }
       generating = false;
       renderShelf();
@@ -1519,7 +1531,7 @@
         }
         renderCastSlots();
       } catch {
-        alert("That photo could not be read. Try another.");
+        flashHint("That photo could not be read. Try another.");
       }
     };
 
@@ -1543,7 +1555,7 @@
 
         const done = await runCastPipeline(started.task_id, name);
         if (done.error) throw new Error(done.error);
-        if (done.warn) alert(done.warn);
+        if (done.warn) flashHint(done.warn);
 
         const cast = done.cast;
         const glb = await fetchAsset(cast.glb_url);
@@ -1560,7 +1572,8 @@
         armedPropId = rec.id;
         hintEl.textContent = "Tap the grid, or use Place here";
       } catch (err) {
-        alert(err.message || "Character build failed.");
+        console.error("cast build:", err);
+        flashHint(err.message || "Character build failed.");
       }
       castStage = null;
       renderShelf();
@@ -2332,7 +2345,7 @@
       let rec = null;
       try { rec = await getPropRecord(armedPropId); } catch {}
       if (!rec) {
-        alert("Couldn't fetch that prop from the library.");
+        flashHint("Couldn't fetch that prop from the library.");
         armedPropId = null;
         renderShelf();
         return;
@@ -2351,7 +2364,7 @@
         selectProp(holder);
         saveScene();
       } catch {
-        alert("Couldn't load that prop.");
+        flashHint("Couldn't load that prop.");
       }
     }
 
