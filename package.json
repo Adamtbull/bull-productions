@@ -3,5 +3,6 @@
   "private": true,
   "version": "0.1.0",
   "description": "Recovery source-of-truth for Bull Productions",
+  "type": "module",
   "engines": { "node": ">=24" }
 }
