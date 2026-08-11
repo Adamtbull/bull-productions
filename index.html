@@ -383,6 +383,34 @@
     body.panels-off .strip { display: none !important; }
     .pill.on { border-color: var(--tungsten); background: #241d0f; }
     #stage-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
+    #cast-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
+    .cast-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 8px;
+    }
+    .cast-slot {
+      position: relative; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 4px;
+      min-height: 76px; padding: 6px;
+      background: var(--stage-2); border: 1px dashed var(--line);
+      border-radius: var(--radius); color: var(--dust);
+      font-family: "Space Mono", monospace; font-size: 10px;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      cursor: pointer; overflow: hidden;
+    }
+    .cast-slot.filled { border-style: solid; border-color: var(--tungsten); color: var(--chalk); }
+    .cast-slot.required:not(.filled) { border-color: var(--tungsten-deep); }
+    .cast-slot img {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      object-fit: cover; opacity: 0.55;
+    }
+    .cast-slot .cs-label { position: relative; z-index: 1; }
+    .cast-slot .cs-hint { position: relative; z-index: 1; font-size: 9px; opacity: 0.75; }
+    .cast-slot .cs-clear {
+      position: absolute; top: 2px; right: 2px; z-index: 2;
+      width: 20px; height: 20px; line-height: 18px; text-align: center;
+      background: rgba(10, 12, 16, 0.8); border: 1px solid var(--line);
+      border-radius: var(--radius); color: var(--chalk); font-size: 12px;
+    }
     #floor-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
     #stick {
       position: absolute;
@@ -596,6 +624,18 @@
 
     <div class="viewer-bottom">
       <span id="hint">Drag to look &middot; use the stick to walk</span>
+    </div>
+    <div class="strip" id="cast-strip">
+      <div class="edit-row">
+        <span class="edit-label">Actor</span>
+        <input type="text" id="cast-name" placeholder="Name this actor" autocomplete="off" maxlength="40" />
+      </div>
+      <div class="cast-grid" id="cast-grid"></div>
+      <div class="edit-row">
+        <span class="edit-label" id="cast-mode-label">Need front</span>
+        <button class="btn small ghost" id="cast-cancel" type="button">Cancel</button>
+        <button class="btn small" id="cast-build" type="button" disabled>Build actor</button>
+      </div>
     </div>
     <input id="prop-photo-input" type="file" accept="image/*" hidden />
     <input id="cast-photo-input" type="file" accept="image/*" hidden />
@@ -974,6 +1014,12 @@
     const panelToggle = document.getElementById("panel-toggle");
     const propPhotoInput = document.getElementById("prop-photo-input");
     const castPhotoInput = document.getElementById("cast-photo-input");
+    const castStrip = document.getElementById("cast-strip");
+    const castGrid = document.getElementById("cast-grid");
+    const castNameInput = document.getElementById("cast-name");
+    const castModeLabel = document.getElementById("cast-mode-label");
+    const castBuildBtn = document.getElementById("cast-build");
+    const castCancelBtn = document.getElementById("cast-cancel");
     const placeHereBtn = document.getElementById("place-here");
     const motionSelect = document.getElementById("motion-select");
     const mspeedRange = document.getElementById("mspeed-range");
@@ -1294,7 +1340,7 @@
       addCast.className = "prop-chip";
       addCast.type = "button";
       addCast.innerHTML = `<div class="pc-img">${castStage ? "\u2026" : "+ Cast"}</div><div class="pc-name">${castStage || "New actor"}</div>`;
-      addCast.onclick = () => { if (!castStage) castPhotoInput.click(); };
+      addCast.onclick = () => { if (!castStage) openCastPanel(); };
       shelfRow.appendChild(addCast);
 
       let locals = [];
@@ -1407,19 +1453,90 @@
     let castStage = null; // label shown on the + Cast chip while building
     const CAST_LABELS = { model: "Body\u2026", check: "Bones\u2026", rig: "Rigging\u2026", anim: "Moves\u2026" };
 
+    // ---------- Multiview cast: four explicit photo slots ----------
+    // Front is required; left, back and right are optional and each one supplied
+    // improves the likeness. Front on its own keeps the original single-image path.
+    const CAST_SLOTS = [
+      { key: "front", label: "Front", hint: "Required" },
+      { key: "left",  label: "Left",  hint: "Optional" },
+      { key: "back",  label: "Back",  hint: "Optional" },
+      { key: "right", label: "Right", hint: "Optional" },
+    ];
+    const castViews = { front: null, left: null, back: null, right: null };
+    let castSlotBeingSet = null;
+
+    function renderCastSlots() {
+      castGrid.innerHTML = "";
+      for (const slot of CAST_SLOTS) {
+        const v = castViews[slot.key];
+        const el = document.createElement("div");
+        el.className = "cast-slot" + (v ? " filled" : "") + (slot.key === "front" ? " required" : "");
+        el.id = "cast-slot-" + slot.key;
+        el.innerHTML =
+          (v ? `<img src="data:image/jpeg;base64,${v.b64}" alt="" />` : "") +
+          `<span class="cs-label">${slot.label}</span>` +
+          `<span class="cs-hint">${v ? "Replace" : slot.hint}</span>` +
+          (v ? `<button class="cs-clear" type="button" aria-label="Remove ${slot.label}">\u00d7</button>` : "");
+        el.onclick = () => { castSlotBeingSet = slot.key; castPhotoInput.click(); };
+        const clear = el.querySelector(".cs-clear");
+        if (clear) {
+          clear.onclick = (e) => { e.stopPropagation(); castViews[slot.key] = null; renderCastSlots(); };
+        }
+        castGrid.appendChild(el);
+      }
+      const n = CAST_SLOTS.filter((s) => castViews[s.key]).length;
+      castModeLabel.textContent = !castViews.front ? "Need front" : n > 1 ? `${n} views` : "Front only";
+      castBuildBtn.disabled = !castViews.front;
+    }
+
+    function openCastPanel() {
+      for (const k of Object.keys(castViews)) castViews[k] = null;
+      castNameInput.value = "";
+      renderCastSlots();
+      castStrip.classList.add("on");
+      shelfEl.classList.remove("on");
+      hintEl.textContent = "Add a front-on photo, plus any other angles you have";
+    }
+
+    function closeCastPanel() {
+      castStrip.classList.remove("on");
+      shelfEl.classList.add("on");
+    }
+
+    castCancelBtn.onclick = closeCastPanel;
+
     castPhotoInput.onchange = async () => {
       const file = castPhotoInput.files && castPhotoInput.files[0];
       castPhotoInput.value = "";
-      if (!file || castStage) return;
-      castStage = "Starting\u2026";
-      renderShelf();
-      const name = (file.name || "Cast").replace(/\.[^.]+$/, "") || "Cast";
+      const key = castSlotBeingSet;
+      castSlotBeingSet = null;
+      if (!file || !key) return;
       try {
         const b64 = await resizeToBase64(file, 1280, 0.85);
+        castViews[key] = { b64, name: (file.name || "").replace(/\.[^.]+$/, "") };
+        if (!castNameInput.value && key === "front" && castViews.front.name) {
+          castNameInput.value = castViews.front.name.slice(0, 40);
+        }
+        renderCastSlots();
+      } catch {
+        alert("That photo could not be read. Try another.");
+      }
+    };
+
+    castBuildBtn.onclick = async () => {
+      if (!castViews.front || castStage) return;
+      const name = (castNameInput.value.trim() || castViews.front.name || "Cast").slice(0, 40);
+      const views = {};
+      for (const s of CAST_SLOTS) views[s.key] = castViews[s.key] ? castViews[s.key].b64 : null;
+
+      closeCastPanel();
+      castStage = "Starting\u2026";
+      renderShelf();
+      try {
         const res = await fetch("/api/cast-generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image_base64: b64 }),
+          body: JSON.stringify({ views }),
         });
         const started = await res.json();
         if (!res.ok) throw new Error(started.error || `Cast start failed (${res.status}).`);
