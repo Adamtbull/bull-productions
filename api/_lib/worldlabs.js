@@ -32,10 +32,25 @@ function pick(obj, ...names) {
   return null;
 }
 
-async function parse(r) {
-  const d = await r.json().catch(() => ({}));
+async function parse(r, what) {
+  const raw = await r.text().catch(() => '');
+  let d = {};
+  try { d = raw ? JSON.parse(raw) : {}; } catch {}
+
   if (!r.ok) {
-    const message = pick(d, 'message') || pick(d.error || {}, 'message') || `World Labs request failed (${r.status}).`;
+    // The rejection body is the only description of this API we have, since the
+    // docs aren't reachable from where this was written. Log it rather than
+    // collapsing it to a status code — a 422 that names the offending field is
+    // the difference between fixing this and guessing at it again.
+    console.error(`worldlabs ${what} -> HTTP ${r.status}:`, raw.slice(0, 2000));
+
+    const detail = d.detail;
+    const fromDetail = Array.isArray(detail)
+      ? detail.map((e) => `${(e.loc || []).join('.')}: ${e.msg}`).join('; ')
+      : (typeof detail === 'string' ? detail : null);
+
+    const message = pick(d, 'message') || pick(d.error || {}, 'message') || fromDetail
+      || `World Labs request failed (${r.status}).`;
     const err = new Error(message);
     err.status = r.status;
     throw err;
@@ -56,12 +71,16 @@ export async function generate({ textPrompt, imageBase64, model, autoEnhance, di
   if (displayName) body.display_name = displayName;
   if (autoEnhance !== undefined) body.auto_enhance = Boolean(autoEnhance);
 
+  // Field names here are inferred, not documented. Log the keys (never the
+  // values — image_base64 is a whole photo) so a 422 can be matched against
+  // exactly what was sent.
+  console.log('worldlabs generate keys:', Object.keys(body).join(','));
   const r = await fetch(`${API}/worlds:generate`, {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify(body),
   });
-  const d = await parse(r);
+  const d = await parse(r, 'worlds:generate');
   const id = operationIdOf(pick(d, 'operation_id', 'name', 'id') || d);
   if (!id) throw new Error('World Labs did not return an operation id.');
   return id;
@@ -70,14 +89,35 @@ export async function generate({ textPrompt, imageBase64, model, autoEnhance, di
 export async function getOperation(operationId) {
   const id = operationIdOf(operationId);
   const r = await fetch(`${API}/operations/${encodeURIComponent(id)}`, { headers: headers() });
-  return parse(r);
+  return parse(r, 'operation');
 }
 
+// The project brief documented worlds:generate but not how to list existing
+// worlds, and the obvious guess 404s. Rather than guess again, try the plausible
+// spellings and keep whichever answers — the Backlot recovers by itself, and the
+// log line records which one was right so this can be pinned down properly.
+const WORLD_LIST_PATHS = ['/worlds', '/worlds:list', '/worlds:search', '/generations', '/operations'];
+let worldListPath = null;
+
 export async function listWorlds() {
-  const r = await fetch(`${API}/worlds`, { headers: headers() });
-  const d = await parse(r);
-  const raw = pick(d, 'worlds', 'items', 'results') || (Array.isArray(d) ? d : []);
-  return (Array.isArray(raw) ? raw : []).map(normalizeWorld).filter(Boolean);
+  const tried = [];
+  for (const path of worldListPath ? [worldListPath] : WORLD_LIST_PATHS) {
+    const r = await fetch(`${API}${path}`, { headers: headers() });
+    if (!r.ok) { tried.push(`${path} -> ${r.status}`); continue; }
+
+    worldListPath = path;
+    console.log(`worldlabs: worlds list endpoint is ${API}${path}`);
+    const d = await parse(r, `list ${path}`);
+    const raw = pick(d, 'worlds', 'items', 'results', 'data') || (Array.isArray(d) ? d : []);
+    const list = (Array.isArray(raw) ? raw : []).map(normalizeWorld).filter(Boolean);
+    if (!list.length) console.log('worldlabs: list returned no usable worlds, shape was', JSON.stringify(d).slice(0, 1000));
+    return list;
+  }
+
+  console.error('worldlabs: no worlds list endpoint matched —', tried.join(', '));
+  const err = new Error('Could not reach the World Labs world list.');
+  err.status = 404;
+  throw err;
 }
 
 // Splats arrive keyed by resolution. The frontend's Fast/Full toggle just needs
