@@ -1,0 +1,2189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Bull Productions — Backlot</title>
+  <meta name="description" content="Turn a photo or a prompt into a walkable 3D set." />
+  <meta name="theme-color" content="#14171d" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Bull Prod" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --stage: #14171d;
+      --stage-2: #1b2029;
+      --line: #2b303c;
+      --tungsten: #f0a63e;
+      --tungsten-deep: #b97f14;
+      --chalk: #eceae3;
+      --dust: #9096a2;
+      --rec: #e2543a;
+      --radius: 4px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; }
+    body {
+      background: var(--stage);
+      color: var(--chalk);
+      font-family: "Space Grotesk", system-ui, sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+      padding: calc(16px + env(safe-area-inset-top)) 16px calc(32px + env(safe-area-inset-bottom));
+    }
+    .wrap { max-width: 640px; margin: 0 auto; }
+
+    /* ---- Slate header (the signature) ---- */
+    .slate {
+      background: #0d0f13;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 20px;
+    }
+    .clapper {
+      height: 18px;
+      background: repeating-linear-gradient(-45deg,
+        var(--chalk) 0 14px, #0d0f13 14px 28px);
+      border-bottom: 1px solid var(--line);
+    }
+    .slate-body { padding: 14px 16px 16px; }
+    .slate-title {
+      font-family: "Archivo Black", sans-serif;
+      font-size: clamp(22px, 6.5vw, 34px);
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      line-height: 1.05;
+    }
+    .slate-sub {
+      font-family: "Space Mono", monospace;
+      font-size: 11px;
+      color: var(--dust);
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      margin-top: 4px;
+    }
+    .slate-grid {
+      display: grid;
+      grid-template-columns: 1fr 88px;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .slate-field {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 8px 10px;
+      background: var(--stage);
+    }
+    .slate-label {
+      font-family: "Space Mono", monospace;
+      font-size: 10px;
+      letter-spacing: 0.16em;
+      color: var(--dust);
+      text-transform: uppercase;
+      display: block;
+      margin-bottom: 2px;
+    }
+    .slate-field input {
+      width: 100%;
+      background: none;
+      border: none;
+      color: var(--chalk);
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 16px;
+      font-weight: 600;
+      outline: none;
+    }
+    .slate-field input::placeholder { color: #565c68; font-weight: 400; }
+    #take-number {
+      font-family: "Archivo Black", sans-serif;
+      font-size: 22px;
+      line-height: 1.2;
+    }
+
+    /* ---- Cards ---- */
+    .card {
+      background: var(--stage-2);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--dust);
+      margin-bottom: 12px;
+    }
+
+    /* Photo picker */
+    .photo-row { display: flex; gap: 12px; align-items: center; }
+    .photo-thumb {
+      width: 72px; height: 72px;
+      border-radius: var(--radius);
+      border: 1px dashed var(--line);
+      background-size: cover;
+      background-position: center;
+      flex: none;
+      display: flex; align-items: center; justify-content: center;
+      color: #565c68;
+      font-family: "Space Mono", monospace;
+      font-size: 10px;
+      text-align: center;
+    }
+    .photo-actions { flex: 1; min-width: 0; }
+    .btn {
+      display: inline-block;
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--stage);
+      color: var(--chalk);
+      padding: 10px 14px;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+      outline: 2px solid var(--tungsten);
+      outline-offset: 2px;
+    }
+    .btn.small { font-size: 13px; padding: 7px 10px; }
+    .btn.ghost { color: var(--dust); }
+    .btn.primary {
+      background: var(--tungsten);
+      border-color: var(--tungsten-deep);
+      color: #17130a;
+      width: 100%;
+      padding: 14px;
+      font-size: 17px;
+      margin-top: 14px;
+    }
+    .btn.primary:disabled { opacity: 0.45; cursor: default; }
+    .photo-name {
+      font-family: "Space Mono", monospace;
+      font-size: 11px;
+      color: var(--dust);
+      margin-top: 6px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 64px;
+      margin-top: 14px;
+      background: var(--stage);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      color: var(--chalk);
+      font-family: "Space Grotesk", sans-serif;
+      font-size: 15px;
+      padding: 10px;
+      resize: vertical;
+    }
+    textarea::placeholder { color: #565c68; }
+
+    .opt-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-top: 14px; gap: 10px;
+    }
+    .opt-label { font-size: 14px; color: var(--chalk); }
+    .opt-hint { font-family: "Space Mono", monospace; font-size: 10px; color: var(--dust); display: block; }
+    .toggle { position: relative; width: 46px; height: 26px; flex: none; }
+    .toggle input { opacity: 0; width: 100%; height: 100%; position: absolute; margin: 0; cursor: pointer; }
+    .toggle span {
+      position: absolute; inset: 0;
+      background: var(--stage); border: 1px solid var(--line);
+      border-radius: 13px; transition: background 0.15s;
+      pointer-events: none;
+    }
+    .toggle span::after {
+      content: ""; position: absolute; top: 3px; left: 3px;
+      width: 18px; height: 18px; border-radius: 50%;
+      background: var(--dust); transition: transform 0.15s, background 0.15s;
+    }
+    .toggle input:checked + span { background: #3a2f17; border-color: var(--tungsten-deep); }
+    .toggle input:checked + span::after { transform: translateX(20px); background: var(--tungsten); }
+
+    .model-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+    .model-pill { position: relative; }
+    .model-pill input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+    .model-pill div {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 10px;
+      text-align: center;
+      pointer-events: none;
+    }
+    .model-pill input:checked + div { border-color: var(--tungsten); background: #241d0f; }
+    .model-pill input:focus-visible + div { outline: 2px solid var(--tungsten); outline-offset: 2px; }
+    .model-name { font-weight: 600; font-size: 15px; }
+    .model-cost { font-family: "Space Mono", monospace; font-size: 11px; color: var(--dust); }
+
+    /* Status strip */
+    .status {
+      display: none;
+      align-items: center; gap: 10px;
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-top: 14px;
+      color: var(--chalk);
+    }
+    .status.on { display: flex; }
+    .rec-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--rec); flex: none; }
+    @media (prefers-reduced-motion: no-preference) {
+      .status.building .rec-dot { animation: blink 1.2s steps(1) infinite; }
+      @keyframes blink { 50% { opacity: 0.2; } }
+    }
+    .status.error { color: var(--rec); text-transform: none; letter-spacing: 0; }
+    .status.error .rec-dot { background: var(--rec); }
+
+    /* Backlot shelf */
+    .backlot-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .set-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--stage);
+      cursor: pointer;
+      text-align: left;
+      padding: 0;
+      color: var(--chalk);
+      font-family: "Space Grotesk", sans-serif;
+    }
+    .set-card img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; }
+    .set-card .set-name {
+      padding: 8px 10px;
+      font-size: 13px;
+      font-weight: 600;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .empty-note { color: var(--dust); font-size: 14px; }
+
+    /* ---- Viewer overlay ---- */
+    #viewer {
+      position: fixed; inset: 0;
+      height: 100dvh;
+      background: #000;
+      display: none;
+      z-index: 50;
+    }
+    #viewer.active { display: block; }
+    #viewer canvas { width: 100%; height: 100%; display: block; touch-action: none; }
+    .viewer-top {
+      position: absolute; top: 0; left: 0; right: 0;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
+      gap: 10px;
+      background: linear-gradient(rgba(0,0,0,0.65), rgba(0,0,0,0));
+      z-index: 4;
+    }
+    .viewer-title {
+      font-family: "Space Mono", monospace;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .viewer-bottom {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      background: linear-gradient(rgba(0,0,0,0), rgba(0,0,0,0.65));
+      font-family: "Space Mono", monospace;
+      font-size: 11px;
+      color: var(--dust);
+    }
+    /* Dress mode: shelf + strips */
+    .strip {
+      position: absolute; left: 0; right: 0;
+      padding: 8px 12px;
+      display: none;
+      background: rgba(10, 12, 16, 0.82);
+      backdrop-filter: blur(6px);
+      border-top: 1px solid var(--line);
+      z-index: 4;
+    }
+    .strip.on { display: block; }
+    #shelf { bottom: calc(46px + env(safe-area-inset-bottom)); }
+    #shelf-row {
+      display: flex; gap: 10px; overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 2px;
+    }
+    .prop-chip {
+      flex: none; width: 64px;
+      background: none; border: none; padding: 0;
+      color: var(--chalk); font-family: "Space Grotesk", sans-serif;
+      cursor: pointer; text-align: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .prop-chip .pc-img {
+      width: 64px; height: 64px;
+      border: 1px solid var(--line); border-radius: var(--radius);
+      background: var(--stage) center/cover no-repeat;
+      display: flex; align-items: center; justify-content: center;
+      font-family: "Space Mono", monospace; font-size: 10px; color: var(--dust);
+    }
+    .prop-chip.armed .pc-img { border-color: var(--tungsten); box-shadow: 0 0 0 1px var(--tungsten); }
+    .prop-chip .pc-name {
+      font-size: 10px; margin-top: 3px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    #place-here {
+      width: 100%; margin-top: 8px; padding: 12px;
+      background: var(--tungsten); border-color: var(--tungsten-deep);
+      color: #17130a; font-size: 16px;
+    }
+    #edit-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
+    .edit-row { display: flex; align-items: center; gap: 10px; }
+    .edit-row + .edit-row { margin-top: 6px; }
+    .edit-label {
+      font-family: "Space Mono", monospace; font-size: 10px;
+      letter-spacing: 0.12em; text-transform: uppercase;
+      color: var(--dust); width: 52px; flex: none;
+    }
+    .edit-row input[type="range"] { flex: 1; accent-color: var(--tungsten); }
+    .edit-row select {
+      background: var(--stage); color: var(--chalk);
+      border: 1px solid var(--line); border-radius: var(--radius);
+      font-family: "Space Grotesk", sans-serif; font-size: 14px;
+      padding: 6px 8px; flex: 1; min-width: 0;
+    }
+    #direct-input {
+      flex: 1; min-width: 0;
+      background: var(--stage); color: var(--chalk);
+      border: 1px solid var(--line); border-radius: var(--radius);
+      font-family: "Space Grotesk", sans-serif; font-size: 15px;
+      padding: 8px 10px;
+    }
+    #direct-input::placeholder { color: #565c68; }
+    #tag-input {
+      flex: 1; min-width: 0;
+      background: var(--stage); color: var(--chalk);
+      border: 1px solid var(--line); border-radius: var(--radius);
+      font-family: "Space Grotesk", sans-serif; font-size: 15px;
+      padding: 8px 10px;
+    }
+    #tag-input::placeholder { color: #565c68; }
+    body.panels-off .strip { display: none !important; }
+    .pill.on { border-color: var(--tungsten); background: #241d0f; }
+    #stage-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
+    #floor-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
+    #stick {
+      position: absolute;
+      left: 18px;
+      bottom: calc(112px + env(safe-area-inset-bottom));
+      width: 116px; height: 116px;
+      border-radius: 50%;
+      border: 1px solid var(--line);
+      background: rgba(10, 12, 16, 0.42);
+      backdrop-filter: blur(4px);
+      display: none;
+      touch-action: none;
+      z-index: 3;
+    }
+    #stick.on { display: block; }
+    body.panels-off #stick { bottom: calc(56px + env(safe-area-inset-bottom)); }
+    #stick-knob {
+      position: absolute; left: 50%; top: 50%;
+      width: 48px; height: 48px; margin: -24px 0 0 -24px;
+      border-radius: 50%;
+      background: rgba(240, 166, 62, 0.55);
+      border: 1px solid var(--tungsten-deep);
+      pointer-events: none;
+    }
+    #progress-bar {
+      position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(70vw, 320px); height: 4px;
+      background: #262b34; border-radius: 2px;
+      display: none; overflow: hidden;
+    }
+    #progress-fill { height: 100%; width: 0%; background: var(--tungsten); }
+
+    footer {
+      font-family: "Space Mono", monospace;
+      font-size: 10px;
+      color: #565c68;
+      text-align: center;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+
+    <header class="slate">
+      <div class="clapper" aria-hidden="true"></div>
+      <div class="slate-body">
+        <div class="slate-title">Bull Productions</div>
+        <div class="slate-sub">Backlot &mdash; photo in, walkable set out</div>
+        <div class="slate-grid">
+          <label class="slate-field">
+            <span class="slate-label">Scene</span>
+            <input id="scene-name" type="text" placeholder="Name this set" autocomplete="off" maxlength="60" />
+          </label>
+          <div class="slate-field">
+            <span class="slate-label">Take</span>
+            <div id="take-number">&ndash;</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="card">
+      <h2>New set</h2>
+
+      <div class="photo-row">
+        <div class="photo-thumb" id="photo-thumb">No photo</div>
+        <div class="photo-actions">
+          <button class="btn" id="pick-photo" type="button">Choose photo</button>
+          <button class="btn small ghost" id="clear-photo" type="button" hidden>Remove</button>
+          <div class="photo-name" id="photo-name"></div>
+        </div>
+        <input id="photo-input" type="file" accept="image/*" hidden />
+      </div>
+
+      <textarea id="direction" placeholder="Or describe the set from scratch. With a photo, this becomes extra direction."></textarea>
+
+      <div class="opt-row">
+        <div>
+          <span class="opt-label">Auto-enhance prompt</span>
+          <span class="opt-hint">Let Marble recaption the input</span>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="auto-enhance" checked />
+          <span></span>
+        </label>
+      </div>
+
+      <div class="model-row" role="radiogroup" aria-label="Quality">
+        <label class="model-pill">
+          <input type="radio" name="model" value="marble-1.0-draft" checked />
+          <div>
+            <div class="model-name">Draft</div>
+            <div class="model-cost">&asymp; US$0.18</div>
+          </div>
+        </label>
+        <label class="model-pill">
+          <input type="radio" name="model" value="marble-1.1" />
+          <div>
+            <div class="model-name">Full</div>
+            <div class="model-cost">&asymp; US$1.26</div>
+          </div>
+        </label>
+      </div>
+
+      <button class="btn primary" id="build" type="button">Build the set</button>
+
+      <div class="status" id="status" role="status">
+        <span class="rec-dot" aria-hidden="true"></span>
+        <span id="status-text"></span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>The backlot</h2>
+      <div class="backlot-grid" id="backlot"></div>
+      <p class="empty-note" id="backlot-empty">No sets yet. Build your first one above.</p>
+    </section>
+
+    <footer>Generation billed by World Labs &middot; walking around is free</footer>
+  </div>
+
+  <div id="viewer">
+    <canvas id="stage-canvas"></canvas>
+    <div class="viewer-top">
+      <div class="viewer-title" id="viewer-title">Set</div>
+      <div style="display:flex; gap:8px;">
+        <button class="btn small" id="panel-toggle" type="button">Menu</button>
+        <button class="btn small" id="mode-toggle" type="button">Dress</button>
+        <button class="btn small" id="fidelity" type="button">Fast</button>
+        <button class="btn small" id="floor-toggle" type="button" hidden>Floor</button>
+        <button class="btn small" id="leave-set" type="button">Leave set</button>
+      </div>
+    </div>
+    <div id="progress-bar"><div id="progress-fill"></div></div>
+
+    <div class="strip" id="floor-strip">
+      <div class="edit-row">
+        <span class="edit-label">Floor</span>
+        <input type="range" id="floor-range" min="-3" max="0.5" step="0.05" value="-1.4" />
+      </div>
+    </div>
+
+    <div class="strip" id="edit-strip">
+      <div class="edit-row">
+        <span class="edit-label">Tag</span>
+        <input type="text" id="tag-input" placeholder="Name this item" autocomplete="off" maxlength="40" />
+      </div>
+      <div class="edit-row">
+        <span class="edit-label">Turn</span>
+        <input type="range" id="rot-range" min="0" max="360" step="1" value="0" />
+        <button class="btn small ghost" id="prop-remove" type="button">Remove</button>
+      </div>
+      <div class="edit-row">
+        <span class="edit-label">Size</span>
+        <input type="range" id="scale-range" min="0.1" max="4" step="0.05" value="1" />
+        <button class="btn small" id="prop-done" type="button">Done</button>
+      </div>
+      <div class="edit-row">
+        <span class="edit-label">Motion</span>
+        <select id="motion-select">
+          <option value="none">Still</option>
+          <option value="hover">Float</option>
+          <option value="bob">Bob</option>
+          <option value="spin">Spin</option>
+          <option value="orbit">Orbit</option>
+        </select>
+        <input type="range" id="mspeed-range" min="0.25" max="3" step="0.05" value="1" />
+      </div>
+      <div class="edit-row">
+        <span class="edit-label">Appear</span>
+        <select id="entrance-select">
+          <option value="none">Just there</option>
+          <option value="fade">Fade in</option>
+          <option value="rise">Rise up</option>
+          <option value="pop">Pop</option>
+          <option value="sparkle">Materialise</option>
+        </select>
+        <button class="btn small" id="entrance-play" type="button">Play</button>
+      </div>
+    </div>
+
+    <div class="strip" id="stage-strip">
+      <div class="edit-row">
+        <input type="text" id="direct-input" placeholder="Direct the scene, e.g. the skull glides to the door" autocomplete="off" />
+        <button class="btn small" id="direct-go" type="button">Go</button>
+      </div>
+      <div class="edit-row">
+        <button class="btn small" id="action-btn" type="button">Action</button>
+        <span class="edit-label" style="width:auto">Speed</span>
+        <button class="btn small pill on" id="ts-1" type="button">1x</button>
+        <button class="btn small pill" id="ts-half" type="button">1/2</button>
+        <button class="btn small pill" id="ts-quarter" type="button">1/4</button>
+      </div>
+    </div>
+
+    <div class="strip" id="shelf">
+      <div id="shelf-row"></div>
+      <button class="btn" id="place-here" type="button" hidden>Place here</button>
+    </div>
+
+    <div id="stick" aria-hidden="true"><div id="stick-knob"></div></div>
+
+    <div class="viewer-bottom">
+      <span id="hint">Drag to look &middot; use the stick to walk</span>
+    </div>
+    <input id="prop-photo-input" type="file" accept="image/*" hidden />
+    <input id="cast-photo-input" type="file" accept="image/*" hidden />
+  </div>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdnjs.cloudflare.com/ajax/libs/three.js/0.178.0/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.178.0/examples/jsm/",
+        "@sparkjsdev/spark": "https://sparkjs.dev/releases/spark/0.1.10/spark.module.js"
+      }
+    }
+  </script>
+
+  <script type="module">
+    // ---------- Elements ----------
+    const sceneName = document.getElementById("scene-name");
+    const takeNumber = document.getElementById("take-number");
+    const pickPhoto = document.getElementById("pick-photo");
+    const clearPhoto = document.getElementById("clear-photo");
+    const photoInput = document.getElementById("photo-input");
+    const photoThumb = document.getElementById("photo-thumb");
+    const photoName = document.getElementById("photo-name");
+    const direction = document.getElementById("direction");
+    const autoEnhance = document.getElementById("auto-enhance");
+    const buildBtn = document.getElementById("build");
+    const statusEl = document.getElementById("status");
+    const statusText = document.getElementById("status-text");
+    const backlot = document.getElementById("backlot");
+    const backlotEmpty = document.getElementById("backlot-empty");
+
+    let imageBase64 = null;
+    let polling = null;
+    let ticker = null;
+
+    // ---------- Status helpers ----------
+    function setStatus(text, mode) {
+      statusEl.className = "status on" + (mode ? " " + mode : "");
+      statusText.textContent = text;
+    }
+    function clearStatus() { statusEl.className = "status"; }
+
+    // ---------- Photo pick + client-side resize ----------
+    pickPhoto.onclick = () => photoInput.click();
+
+    photoInput.onchange = async () => {
+      const file = photoInput.files && photoInput.files[0];
+      if (!file) return;
+      try {
+        imageBase64 = await resizeToBase64(file, 1600, 0.85);
+        photoThumb.textContent = "";
+        photoThumb.style.backgroundImage = `url(data:image/jpeg;base64,${imageBase64})`;
+        photoName.textContent = file.name;
+        clearPhoto.hidden = false;
+        clearStatus();
+      } catch (err) {
+        imageBase64 = null;
+        setStatus("Couldn't read that image. Try a JPEG or a screenshot of it.", "error");
+      }
+    };
+
+    clearPhoto.onclick = () => {
+      imageBase64 = null;
+      photoInput.value = "";
+      photoThumb.style.backgroundImage = "";
+      photoThumb.textContent = "No photo";
+      photoName.textContent = "";
+      clearPhoto.hidden = true;
+    };
+
+    function resizeToBase64(file, maxEdge, quality) {
+      return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+            const w = Math.round(img.width * scale);
+            const h = Math.round(img.height * scale);
+            const canvas = document.createElement("canvas");
+            canvas.width = w; canvas.height = h;
+            canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+            URL.revokeObjectURL(url);
+            resolve(canvas.toDataURL("image/jpeg", quality).split(",")[1]);
+          } catch (e) { reject(e); }
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("decode failed")); };
+        img.src = url;
+      });
+    }
+
+    // ---------- Build flow ----------
+    buildBtn.onclick = async () => {
+      const text = direction.value.trim();
+      if (!imageBase64 && !text) {
+        setStatus("Add a photo or describe the set first.", "error");
+        return;
+      }
+      const model = document.querySelector('input[name="model"]:checked').value;
+
+      buildBtn.disabled = true;
+      setStatus("Slating in \u2014 sending to the studio", "building");
+
+      let started;
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text_prompt: text || null,
+            image_base64: imageBase64,
+            model,
+            auto_enhance: autoEnhance.checked,
+            display_name: sceneName.value.trim() || null,
+          }),
+        });
+        started = await res.json();
+        if (!res.ok) throw new Error(friendlyError(res.status, started));
+      } catch (err) {
+        buildBtn.disabled = false;
+        setStatus(err.message, "error");
+        return;
+      }
+
+      pollOperation(started.operation_id);
+    };
+
+    function friendlyError(status, body) {
+      if (status === 402) {
+        return "Out of World Labs credits. Top up at platform.worldlabs.ai, then try again.";
+      }
+      return (body && body.error) || `Something went wrong (${status}).`;
+    }
+
+    function pollOperation(operationId) {
+      const startedAt = Date.now();
+      const tick = () => {
+        const s = Math.floor((Date.now() - startedAt) / 1000);
+        const mm = String(Math.floor(s / 60)).padStart(2, "0");
+        const ss = String(s % 60).padStart(2, "0");
+        setStatus(`Building world \u2014 ${mm}:${ss}`, "building");
+      };
+      tick();
+      ticker = setInterval(tick, 1000);
+
+      polling = setInterval(async () => {
+        let data;
+        try {
+          const res = await fetch(`/api/operation?id=${encodeURIComponent(operationId)}`);
+          data = await res.json();
+          if (!res.ok) throw new Error(friendlyError(res.status, data));
+        } catch (err) {
+          stopPolling();
+          buildBtn.disabled = false;
+          setStatus(err.message, "error");
+          return;
+        }
+        if (!data.done) return;
+
+        stopPolling();
+        buildBtn.disabled = false;
+
+        if (data.error || !data.world) {
+          setStatus(data.error || "Generation failed.", "error");
+          return;
+        }
+
+        setStatus("Set ready", "");
+        addToBacklot(data.world, true);
+        openWorld(data.world);
+      }, 5000);
+    }
+
+    function stopPolling() {
+      clearInterval(polling); polling = null;
+      clearInterval(ticker); ticker = null;
+    }
+
+    // ---------- Backlot shelf ----------
+    const seen = new Set();
+
+    function addToBacklot(world, prepend) {
+      if (seen.has(world.world_id)) return;
+      seen.add(world.world_id);
+      backlotEmpty.style.display = "none";
+
+      const btn = document.createElement("button");
+      btn.className = "set-card";
+      btn.type = "button";
+      const img = document.createElement("img");
+      img.loading = "lazy";
+      img.alt = "";
+      if (world.thumbnail_url) img.src = world.thumbnail_url;
+      const name = document.createElement("div");
+      name.className = "set-name";
+      name.textContent = world.display_name || world.caption || "Untitled set";
+      btn.appendChild(img);
+      btn.appendChild(name);
+      btn.onclick = () => openWorld(world);
+
+      if (prepend) backlot.prepend(btn); else backlot.appendChild(btn);
+      takeNumber.textContent = String(seen.size + 1);
+    }
+
+    async function loadBacklot() {
+      try {
+        const res = await fetch("/api/worlds");
+        const data = await res.json();
+        if (!res.ok) throw new Error(friendlyError(res.status, data));
+        (data.worlds || []).forEach((w) => addToBacklot(w, false));
+        takeNumber.textContent = String(seen.size + 1);
+        if (seen.size === 0) backlotEmpty.style.display = "";
+      } catch (err) {
+        takeNumber.textContent = "1";
+        setStatus(err.message, "error");
+      }
+    }
+    loadBacklot();
+
+    // ---------- Viewer ----------
+    import * as THREE from "three";
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+    import { SparkRenderer, SplatMesh, SplatLoader, SparkControls } from "@sparkjsdev/spark";
+
+    const viewerEl = document.getElementById("viewer");
+    const viewerTitle = document.getElementById("viewer-title");
+    const fidelityBtn = document.getElementById("fidelity");
+    const leaveBtn = document.getElementById("leave-set");
+    const canvas = document.getElementById("stage-canvas");
+    const progressBar = document.getElementById("progress-bar");
+    const progressFill = document.getElementById("progress-fill");
+
+    let renderer = null, scene3 = null, camera = null, controls = null;
+    let currentMesh = null;
+    let currentWorld = null;
+    let fastMode = true;
+
+    function ensureRenderer() {
+      if (renderer) return;
+      renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      scene3 = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(60, 1, 0.01, 1000);
+      const spark = new SparkRenderer({ renderer, view: { sort32: true } });
+      scene3.add(spark);
+      scene3.add(new THREE.HemisphereLight(0xffffff, 0x3a3f4a, 1.1));
+      const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+      sun.position.set(2, 4, 1);
+      scene3.add(sun);
+      placedGroup = new THREE.Group();
+      scene3.add(placedGroup);
+      gridHelper = new THREE.GridHelper(8, 16, 0xf0a63e, 0x3a3f4a);
+      gridHelper.visible = false;
+      scene3.add(gridHelper);
+      sizeToViewport();
+      window.addEventListener("resize", sizeToViewport);
+      canvas.addEventListener("pointerdown", onCanvasDown, true);
+      canvas.addEventListener("pointermove", onCanvasMove, true);
+      canvas.addEventListener("pointerup", onCanvasUp, true);
+      canvas.addEventListener("pointercancel", (e) => { lookUp(e); }, true);
+      renderer.setAnimationLoop(() => {
+        if (!viewerEl.classList.contains("active")) return;
+        const dt = Math.min(0.1, clock.getDelta()) * timeScale;
+        if (mode === "direct") updateCamera(Math.min(0.1, dt / (timeScale || 1)));
+        if (mode === "dress" && gridHelper && gridHelper.visible) {
+          gridHelper.position.set(camera.position.x, floorY, camera.position.z);
+        }
+        updateProps(dt);
+        if (selectBox) selectBox.update();
+        renderer.render(scene3, camera);
+      });
+    }
+
+    function sizeToViewport() {
+      if (!renderer) return;
+      const w = window.innerWidth, h = window.innerHeight;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+    }
+
+    function pickSplatUrl(world) {
+      const s = world.splats || {};
+      if (fastMode) return s["500k"] || s.full_res || s["100k"] || Object.values(s)[0];
+      return s.full_res || s["500k"] || s["100k"] || Object.values(s)[0];
+    }
+
+    async function openWorld(world) {
+      ensureRenderer();
+      currentWorld = world;
+      viewerEl.classList.add("active");
+      viewerTitle.textContent = world.display_name || world.caption || "Untitled set";
+      fidelityBtn.textContent = fastMode ? "Fast" : "Full";
+      setMode("direct");
+      await loadSplat();
+      loadCollider(world);
+      await restoreScene();
+    }
+
+    async function loadSplat() {
+      if (!currentWorld) return;
+      const url = pickSplatUrl(currentWorld);
+      if (!url) {
+        viewerTitle.textContent = "No splat available for this set";
+        return;
+      }
+      if (currentMesh) {
+        scene3.remove(currentMesh);
+        currentMesh.dispose();
+        currentMesh = null;
+      }
+      progressBar.style.display = "block";
+      progressFill.style.width = "0%";
+      try {
+        const loader = new SplatLoader();
+        const packedSplats = await loader.loadAsync(url, (e) => {
+          if (e.total) {
+            const p = Math.max(0, Math.min(1, e.loaded / e.total));
+            progressFill.style.width = `${p * 100}%`;
+          }
+        });
+        currentMesh = new SplatMesh({ packedSplats });
+        currentMesh.quaternion.set(1, 0, 0, 0);
+        scene3.add(currentMesh);
+        camera.position.set(0, 0, 0);
+        camera.rotation.order = "YXZ";
+        yaw = 0; pitch = 0;
+        camera.rotation.set(0, 0, 0);
+        vel.set(0, 0, 0);
+      } catch (err) {
+        viewerTitle.textContent = "Couldn't load the set \u2014 check your connection and reopen it";
+      }
+      progressBar.style.display = "none";
+    }
+
+    fidelityBtn.onclick = async () => {
+      fastMode = !fastMode;
+      fidelityBtn.textContent = fastMode ? "Fast" : "Full";
+      await loadSplat();
+    };
+
+    leaveBtn.onclick = () => {
+      viewerEl.classList.remove("active");
+      if (currentMesh) {
+        scene3.remove(currentMesh);
+        currentMesh.dispose();
+        currentMesh = null;
+      }
+      clearPlaced();
+      if (colliderRoot) {
+        scene3.remove(colliderRoot);
+        colliderRoot = null;
+        colliderReady = false;
+      }
+      currentWorld = null;
+    };
+
+    // ==================================================
+    // Dress mode: props shelf, placement, set dressing
+    // ==================================================
+    const modeBtn = document.getElementById("mode-toggle");
+    const floorBtn = document.getElementById("floor-toggle");
+    const hintEl = document.getElementById("hint");
+    const shelfEl = document.getElementById("shelf");
+    const shelfRow = document.getElementById("shelf-row");
+    const editStrip = document.getElementById("edit-strip");
+    const floorStrip = document.getElementById("floor-strip");
+    const floorRange = document.getElementById("floor-range");
+    const rotRange = document.getElementById("rot-range");
+    const scaleRange = document.getElementById("scale-range");
+    const propRemoveBtn = document.getElementById("prop-remove");
+    const propDoneBtn = document.getElementById("prop-done");
+    const tagInput = document.getElementById("tag-input");
+    const panelToggle = document.getElementById("panel-toggle");
+    const propPhotoInput = document.getElementById("prop-photo-input");
+    const castPhotoInput = document.getElementById("cast-photo-input");
+    const placeHereBtn = document.getElementById("place-here");
+    const motionSelect = document.getElementById("motion-select");
+    const mspeedRange = document.getElementById("mspeed-range");
+    const entranceSelect = document.getElementById("entrance-select");
+    const entrancePlayBtn = document.getElementById("entrance-play");
+    const stageStrip = document.getElementById("stage-strip");
+    const actionBtn = document.getElementById("action-btn");
+    const directInput = document.getElementById("direct-input");
+    const directGo = document.getElementById("direct-go");
+    const directSched = [];
+    const tsButtons = [
+      { el: document.getElementById("ts-1"), v: 1 },
+      { el: document.getElementById("ts-half"), v: 0.5 },
+      { el: document.getElementById("ts-quarter"), v: 0.25 },
+    ];
+
+    const clock = new THREE.Clock();
+    let timeScale = 1;
+
+    // ---------- Walk camera: drag to look, stick to move ----------
+    const stickEl = document.getElementById("stick");
+    const knobEl = document.getElementById("stick-knob");
+    const stickVec = new THREE.Vector2(0, 0);   // -1..1 each axis
+    const vel = new THREE.Vector3(0, 0, 0);
+    let yaw = 0, pitch = 0;
+    let stickId = null;
+    let lookId = null, lookX = 0, lookY = 0;
+    const EYE = 1.55, WALK = 2.4, LOOK_SENS = 0.0042;
+
+    let mode = "direct";
+    let placedGroup = null;
+    let gridHelper = null;
+    let floorY = -1.4;
+    let armedPropId = null;     // shelf prop waiting to be placed
+    let selected = null;        // { holder, item }
+    let selectBox = null;
+    let generating = false;
+    let gridTimer = null;
+    const raycaster = new THREE.Raycaster();
+    const gltfLoader = new GLTFLoader();
+
+    // ---------- Tiny IndexedDB shelf store ----------
+    function idb() {
+      return new Promise((resolve, reject) => {
+        const req = indexedDB.open("bullprod", 1);
+        req.onupgradeneeded = () => {
+          req.result.createObjectStore("props", { keyPath: "id" });
+        };
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function idbPut(rec) {
+      const db = await idb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction("props", "readwrite");
+        tx.objectStore("props").put(rec);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    }
+    async function idbAll() {
+      const db = await idb();
+      return new Promise((resolve, reject) => {
+        const req = db.transaction("props").objectStore("props").getAll();
+        req.onsuccess = () => resolve(req.result || []);
+        req.onerror = () => reject(req.error);
+      });
+    }
+    async function idbGet(id) {
+      const db = await idb();
+      return new Promise((resolve, reject) => {
+        const req = db.transaction("props").objectStore("props").get(id);
+        req.onsuccess = () => resolve(req.result || null);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    // ---------- Cloud library ----------
+    const cloudProps = new Map(); // id -> { id, name, glb_url, preview_url }
+    const cloudCast = new Map();  // id -> { id, name, glb_url, preview_url, anims }
+    async function loadCloudProps() {
+      try {
+        const r = await fetch("/api/props-list");
+        const d = await r.json();
+        if (r.ok && d.cloud) {
+          for (const p of d.props || []) cloudProps.set(p.id, p);
+        }
+      } catch {}
+      try {
+        const r = await fetch("/api/cast-list");
+        const d = await r.json();
+        if (r.ok && d.cloud) {
+          for (const c of d.cast || []) cloudCast.set(c.id, c);
+        }
+      } catch {}
+    }
+    loadCloudProps();
+
+    async function getPropRecord(id) {
+      const local = await idbGet(id).catch(() => null);
+      if (local) return local;
+      const cp = cloudProps.get(id) || cloudCast.get(id);
+      if (!cp) return null;
+      const glb = await fetchAsset(cp.glb_url);
+      let preview = null;
+      if (cp.preview_url) {
+        try { preview = await (await fetch(cp.preview_url)).blob(); } catch {}
+      }
+      const rec = {
+        id: cp.id,
+        name: cp.name || "Prop",
+        created: Date.now(),
+        glb,
+        preview,
+        kind: cloudCast.has(id) ? "cast" : "prop",
+        anims: cp.anims || null,
+      };
+      try { await idbPut(rec); } catch {}
+      return rec;
+    }
+
+    function resetKnob() {
+      if (knobEl) knobEl.style.transform = "";
+    }
+
+    function stickAt(e) {
+      const r = stickEl.getBoundingClientRect();
+      const cx = r.left + r.width / 2;
+      const cy = r.top + r.height / 2;
+      const max = r.width / 2 - 12;
+      let dx = e.clientX - cx;
+      let dy = e.clientY - cy;
+      const len = Math.hypot(dx, dy);
+      if (len > max) { dx = (dx / len) * max; dy = (dy / len) * max; }
+      knobEl.style.transform = `translate(${dx}px, ${dy}px)`;
+      stickVec.set(dx / max, dy / max);
+    }
+
+    stickEl.addEventListener("pointerdown", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      stickId = e.pointerId;
+      stickEl.setPointerCapture(e.pointerId);
+      stickAt(e);
+    });
+    stickEl.addEventListener("pointermove", (e) => {
+      if (stickId !== e.pointerId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      stickAt(e);
+    });
+    const dropStick = (e) => {
+      if (stickId !== e.pointerId) return;
+      stickId = null;
+      stickVec.set(0, 0);
+      resetKnob();
+    };
+    stickEl.addEventListener("pointerup", dropStick);
+    stickEl.addEventListener("pointercancel", dropStick);
+
+    // Look: one finger anywhere on the stage while directing
+    function lookDown(e) {
+      if (mode !== "direct" || lookId !== null) return;
+      lookId = e.pointerId;
+      lookX = e.clientX;
+      lookY = e.clientY;
+    }
+    function lookMove(e) {
+      if (mode !== "direct" || lookId !== e.pointerId) return;
+      const dx = e.clientX - lookX;
+      const dy = e.clientY - lookY;
+      lookX = e.clientX;
+      lookY = e.clientY;
+      yaw -= dx * LOOK_SENS;
+      pitch -= dy * LOOK_SENS;
+      const lim = Math.PI / 2 - 0.05;
+      pitch = Math.max(-lim, Math.min(lim, pitch));
+    }
+    function lookUp(e) {
+      if (lookId === e.pointerId) lookId = null;
+    }
+
+    // Keep a walker on the ground and out of walls
+    function groundY(x, z, fromY) {
+      if (!colliderReady || !colliderRoot) return null;
+      const down = new THREE.Raycaster(
+        new THREE.Vector3(x, fromY + 1.2, z),
+        new THREE.Vector3(0, -1, 0), 0.05, 12
+      );
+      const hits = down.intersectObject(colliderRoot, true);
+      for (const h of hits) {
+        let up = 1;
+        if (h.face) up = h.face.normal.clone().transformDirection(h.object.matrixWorld).y;
+        if (up > 0.45) return h.point.y;
+      }
+      return null;
+    }
+
+    function blocked(from, dir, dist) {
+      if (!colliderReady || !colliderRoot) return false;
+      const ray = new THREE.Raycaster(from.clone(), dir.clone().normalize(), 0.02, dist);
+      const hits = ray.intersectObject(colliderRoot, true);
+      for (const h of hits) {
+        let ny = 0;
+        if (h.face) ny = h.face.normal.clone().transformDirection(h.object.matrixWorld).y;
+        if (Math.abs(ny) < 0.5) return true; // a wall, not a floor or ceiling
+      }
+      return false;
+    }
+
+    function updateCamera(dt) {
+      if (!camera) return;
+      camera.rotation.order = "YXZ";
+      camera.rotation.set(pitch, yaw, 0);
+
+      // Stick input, camera-relative and flat on the horizon
+      const fwd = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw));
+      const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+      const want = new THREE.Vector3()
+        .addScaledVector(fwd, -stickVec.y)
+        .addScaledVector(right, stickVec.x);
+      if (want.lengthSq() > 1) want.normalize();
+      want.multiplyScalar(WALK);
+
+      // Ease into and out of movement so it never feels twitchy
+      const ease = 1 - Math.pow(0.0015, dt);
+      vel.lerp(want, ease);
+      if (vel.lengthSq() < 1e-6) vel.set(0, 0, 0);
+
+      const step = vel.clone().multiplyScalar(dt);
+      if (step.lengthSq() > 0) {
+        const probe = camera.position.clone();
+        probe.y -= 0.6;
+        const len = step.length();
+        if (!blocked(probe, step, len + 0.35)) {
+          camera.position.x += step.x;
+          camera.position.z += step.z;
+        } else {
+          vel.set(0, 0, 0);
+        }
+      }
+
+      // Stay at eye height over whatever floor is underfoot
+      const g = groundY(camera.position.x, camera.position.z, camera.position.y);
+      if (g !== null) {
+        const target = g + EYE;
+        camera.position.y += (target - camera.position.y) * Math.min(1, dt * 6);
+      }
+    }
+
+    // ---------- Mode handling ----------
+    function setMode(next) {
+      mode = next;
+      modeBtn.textContent = mode === "direct" ? "Dress" : "Direct";
+      fidelityBtn.hidden = mode !== "direct";
+      updateFloorBtn();
+      shelfEl.classList.toggle("on", mode === "dress");
+      stageStrip.classList.toggle("on", mode === "direct");
+      stickEl.classList.toggle("on", mode === "direct");
+      if (mode !== "direct") { stickVec.set(0, 0); resetKnob(); }
+      if (gridHelper) {
+        clearTimeout(gridTimer);
+        gridHelper.visible = mode === "dress";
+        gridHelper.position.y = floorY;
+      }
+      if (mode === "direct") {
+        floorStrip.classList.remove("on");
+        deselectProp();
+        armedPropId = null;
+        renderShelf();
+      }
+      hintEl.textContent =
+        mode === "direct"
+          ? "Drag to look \u00b7 use the stick to walk"
+          : armedPropId
+            ? "Tap the grid, or use Place here"
+            : "Tap a prop on the shelf, or tap a placed prop to adjust it";
+    }
+    modeBtn.onclick = () => setMode(mode === "direct" ? "dress" : "direct");
+
+    floorBtn.onclick = () => {
+      floorStrip.classList.toggle("on");
+      editStrip.classList.remove("on");
+      if (floorStrip.classList.contains("on")) showGrid(2500);
+    };
+
+    function showGrid(ms) {
+      if (!gridHelper) return;
+      gridHelper.position.y = floorY;
+      gridHelper.visible = true;
+      clearTimeout(gridTimer);
+      if (mode !== "dress") {
+        gridTimer = setTimeout(() => { gridHelper.visible = false; }, ms);
+      }
+    }
+
+    floorRange.oninput = () => {
+      floorY = parseFloat(floorRange.value);
+      showGrid(2000);
+      saveScene();
+    };
+
+    // ---------- Shelf ----------
+    async function renderShelf() {
+      shelfRow.innerHTML = "";
+
+      const add = document.createElement("button");
+      add.className = "prop-chip";
+      add.type = "button";
+      add.innerHTML = `<div class="pc-img">${generating ? "\u2026" : "+ Prop"}</div><div class="pc-name">${generating ? "Building" : "New"}</div>`;
+      add.onclick = () => { if (!generating) propPhotoInput.click(); };
+      shelfRow.appendChild(add);
+
+      const addCast = document.createElement("button");
+      addCast.className = "prop-chip";
+      addCast.type = "button";
+      addCast.innerHTML = `<div class="pc-img">${castStage ? "\u2026" : "+ Cast"}</div><div class="pc-name">${castStage || "New actor"}</div>`;
+      addCast.onclick = () => { if (!castStage) castPhotoInput.click(); };
+      shelfRow.appendChild(addCast);
+
+      let locals = [];
+      try { locals = await idbAll(); } catch { locals = []; }
+      const entries = new Map();
+      for (const p of locals) {
+        entries.set(p.id, {
+          id: p.id,
+          name: p.name,
+          order: p.created || 0,
+          previewSrc: p.preview ? URL.createObjectURL(p.preview) : null,
+        });
+      }
+      for (const [pid, cp] of cloudProps) {
+        if (entries.has(pid)) continue;
+        entries.set(pid, {
+          id: pid,
+          name: cp.name || "Prop",
+          order: Date.parse(cp.created_at || "") || 0,
+          previewSrc: cp.preview_url || null,
+        });
+      }
+      for (const [cid, cc] of cloudCast) {
+        if (entries.has(cid)) continue;
+        entries.set(cid, {
+          id: cid,
+          name: cc.name || "Cast",
+          order: Date.parse(cc.created_at || "") || 0,
+          previewSrc: cc.preview_url || null,
+        });
+      }
+
+      placeHereBtn.hidden = !armedPropId;
+
+      const sorted = [...entries.values()].sort((a, b) => b.order - a.order);
+      for (const p of sorted) {
+        const chip = document.createElement("button");
+        chip.className = "prop-chip" + (armedPropId === p.id ? " armed" : "");
+        chip.type = "button";
+        const img = document.createElement("div");
+        img.className = "pc-img";
+        if (p.previewSrc) img.style.backgroundImage = `url(${p.previewSrc})`;
+        else img.textContent = "3D";
+        const nm = document.createElement("div");
+        nm.className = "pc-name";
+        nm.textContent = p.name;
+        chip.appendChild(img);
+        chip.appendChild(nm);
+        chip.onclick = () => {
+          armedPropId = armedPropId === p.id ? null : p.id;
+          deselectProp();
+          renderShelf();
+          hintEl.textContent = armedPropId ? "Tap the grid, or use Place here" : "Tap a prop on the shelf, or tap a placed prop to adjust it";
+        };
+        shelfRow.appendChild(chip);
+      }
+    }
+
+    // ---------- Prop generation ----------
+    propPhotoInput.onchange = async () => {
+      const file = propPhotoInput.files && propPhotoInput.files[0];
+      propPhotoInput.value = "";
+      if (!file || generating) return;
+      generating = true;
+      renderShelf();
+      const name = (file.name || "Prop").replace(/\.[^.]+$/, "") || "Prop";
+      try {
+        const b64 = await resizeToBase64(file, 1280, 0.85);
+        const res = await fetch("/api/props-generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image_base64: b64 }),
+        });
+        const started = await res.json();
+        if (!res.ok) throw new Error(started.error || `Prop start failed (${res.status}).`);
+        const done = await pollProp(started.task_id, name);
+        if (done.error) throw new Error(done.error);
+        if (done.warn) alert(done.warn);
+
+        let rec;
+        if (done.prop) {
+          // Permanent copy already sits in the cloud library; cache it locally too
+          const glb = await fetchAsset(done.prop.glb_url);
+          let preview = null;
+          if (done.prop.preview_url) {
+            try { preview = await (await fetch(done.prop.preview_url)).blob(); } catch {}
+          }
+          rec = { id: done.prop.id, name: done.prop.name || name, created: Date.now(), glb, preview };
+          cloudProps.set(rec.id, done.prop);
+        } else {
+          // Tripo links die fast, so pull the files down right now
+          const glb = await fetchAsset(done.model_url);
+          let preview = null;
+          if (done.preview_url) {
+            try { preview = await (await fetchAssetResponse(done.preview_url)).blob(); } catch {}
+          }
+          rec = { id: `prop_${Date.now()}`, name, created: Date.now(), glb, preview };
+        }
+        await idbPut(rec);
+        armedPropId = rec.id;
+        hintEl.textContent = "Tap the grid, or use Place here";
+      } catch (err) {
+        alert(err.message || "Prop generation failed.");
+      }
+      generating = false;
+      renderShelf();
+    };
+
+    // ---------- Cast generation ----------
+    let castStage = null; // label shown on the + Cast chip while building
+    const CAST_LABELS = { model: "Body\u2026", check: "Bones\u2026", rig: "Rigging\u2026", anim: "Moves\u2026" };
+
+    castPhotoInput.onchange = async () => {
+      const file = castPhotoInput.files && castPhotoInput.files[0];
+      castPhotoInput.value = "";
+      if (!file || castStage) return;
+      castStage = "Starting\u2026";
+      renderShelf();
+      const name = (file.name || "Cast").replace(/\.[^.]+$/, "") || "Cast";
+      try {
+        const b64 = await resizeToBase64(file, 1280, 0.85);
+        const res = await fetch("/api/cast-generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image_base64: b64 }),
+        });
+        const started = await res.json();
+        if (!res.ok) throw new Error(started.error || `Cast start failed (${res.status}).`);
+
+        const done = await runCastPipeline(started.task_id, name);
+        if (done.error) throw new Error(done.error);
+        if (done.warn) alert(done.warn);
+
+        const cast = done.cast;
+        const glb = await fetchAsset(cast.glb_url);
+        let preview = null;
+        if (cast.preview_url) {
+          try { preview = await (await fetch(cast.preview_url)).blob(); } catch {}
+        }
+        const rec = {
+          id: cast.id, name: cast.name || name, created: Date.now(),
+          glb, preview, kind: "cast", anims: cast.anims || null,
+        };
+        await idbPut(rec);
+        cloudCast.set(cast.id, cast);
+        armedPropId = rec.id;
+        hintEl.textContent = "Tap the grid, or use Place here";
+      } catch (err) {
+        alert(err.message || "Character build failed.");
+      }
+      castStage = null;
+      renderShelf();
+    };
+
+    function runCastPipeline(firstTaskId, name) {
+      return new Promise((resolve) => {
+        let st = { stage: "model", id: firstTaskId, model: firstTaskId };
+        const t = setInterval(async () => {
+          try {
+            const qs = `stage=${encodeURIComponent(st.stage)}&id=${encodeURIComponent(st.id)}` +
+              `&model=${encodeURIComponent(st.model || "")}&name=${encodeURIComponent(name)}`;
+            const r = await fetch(`/api/cast-task?${qs}`);
+            const d = await r.json();
+            if (!r.ok) { clearInterval(t); resolve({ error: d.error || `Cast poll failed (${r.status}).` }); return; }
+            if (d.done) { clearInterval(t); resolve(d); return; }
+            st = { stage: d.stage || st.stage, id: d.id || st.id, model: d.model || st.model };
+            const label = CAST_LABELS[st.stage] || "Building\u2026";
+            if (castStage !== label) { castStage = label; renderShelf(); }
+          } catch (e) {
+            clearInterval(t); resolve({ error: "Lost connection while building the character." });
+          }
+        }, 4000);
+      });
+    }
+
+    function pollProp(taskId, propName) {
+      return new Promise((resolve) => {
+        const t = setInterval(async () => {
+          try {
+            const r = await fetch(`/api/props-task?id=${encodeURIComponent(taskId)}&name=${encodeURIComponent(propName || "Prop")}`);
+            const d = await r.json();
+            if (!r.ok) { clearInterval(t); resolve({ error: d.error || `Poll failed (${r.status}).` }); return; }
+            if (d.done) { clearInterval(t); resolve(d); }
+          } catch (e) {
+            clearInterval(t); resolve({ error: "Lost connection while building the prop." });
+          }
+        }, 4000);
+      });
+    }
+
+    async function fetchAssetResponse(url) {
+      try {
+        const direct = await fetch(url);
+        if (direct.ok) return direct;
+        throw new Error(`direct ${direct.status}`);
+      } catch {
+        const prox = await fetch(`/api/props-proxy?u=${encodeURIComponent(url)}`);
+        if (!prox.ok) {
+          let msg = `Couldn't download the prop (${prox.status}).`;
+          try {
+            const j = await prox.json();
+            if (j.error === "too_large") msg = "That prop file is too big to relay. Try a simpler object.";
+            else if (j.error) msg = j.error;
+          } catch {}
+          throw new Error(msg);
+        }
+        return prox;
+      }
+    }
+    async function fetchAsset(url) {
+      const r = await fetchAssetResponse(url);
+      return await r.arrayBuffer();
+    }
+
+    // ---------- Loading a prop into the room ----------
+    function parseGlb(buffer) {
+      return new Promise((resolve, reject) => {
+        gltfLoader.parse(buffer.slice(0), "", (g) => resolve(g), (e) => reject(e));
+      });
+    }
+
+    async function buildHolder(propRec, item) {
+      const gltf = await parseGlb(propRec.glb);
+      const obj = gltf.scene;
+      const isCast = (propRec.kind === "cast") || (item && item.kind === "cast");
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      if (isCast && size.y > 0.0001) {
+        obj.scale.setScalar(1.7 / size.y); // people are people-sized
+      } else {
+        const maxDim = Math.max(size.x, size.y, size.z) || 1;
+        obj.scale.setScalar(1 / maxDim);
+      }
+      const box2 = new THREE.Box3().setFromObject(obj);
+      obj.position.x -= (box2.min.x + box2.max.x) / 2;
+      obj.position.z -= (box2.min.z + box2.max.z) / 2;
+      obj.position.y -= box2.min.y;
+
+      const holder = new THREE.Group();
+      holder.add(obj);
+      holder.position.set(item.x, item.y, item.z);
+      holder.rotation.y = item.rotY || 0;
+      holder.scale.setScalar(item.scale || 1);
+      holder.userData.item = item;
+      holder.userData.t = Math.random() * 10;
+      if (gltf.animations && gltf.animations.length) {
+        const mixer = new THREE.AnimationMixer(obj);
+        mixer.clipAction(gltf.animations[0]).play();
+        holder.userData.mixer = mixer;
+      }
+      holder.userData.mats = [];
+      obj.traverse((o) => {
+        if (o.isMesh && o.material) {
+          const list = Array.isArray(o.material) ? o.material : [o.material];
+          for (const m of list) {
+            holder.userData.mats.push({
+              m,
+              opacity: typeof m.opacity === "number" ? m.opacity : 1,
+              transparent: !!m.transparent,
+            });
+          }
+        }
+      });
+      placedGroup.add(holder);
+      return holder;
+    }
+
+    function setHolderOpacity(h, k) {
+      if (h.userData.lastK === k) return;
+      h.userData.lastK = k;
+      for (const r of h.userData.mats || []) {
+        if (k >= 1) {
+          r.m.transparent = r.transparent;
+          r.m.opacity = r.opacity;
+          r.m.depthWrite = true;
+        } else {
+          r.m.transparent = true;
+          r.m.opacity = r.opacity * k;
+          r.m.depthWrite = false;
+        }
+      }
+    }
+
+    // Motion behaviours and entrances, every frame
+    function updateProps(dt) {
+      if (!placedGroup) return;
+      for (let i = directSched.length - 1; i >= 0; i--) {
+        const s = directSched[i];
+        s.t += dt;
+        if (s.t >= 0) {
+          try { s.fn(); } catch {}
+          directSched.splice(i, 1);
+        }
+      }
+      for (const h of placedGroup.children) {
+        const it = h.userData.item;
+        if (!it) continue;
+
+        const mv = h.userData.move;
+        if (mv) {
+          mv.t += dt;
+          if (mv.t >= 0) {
+            const p = Math.min(1, mv.t / mv.dur);
+            const e = p * p * (3 - 2 * p);
+            it.x = mv.fromX + (mv.toX - mv.fromX) * e;
+            it.y = mv.fromY + (mv.toY - mv.fromY) * e;
+            it.z = mv.fromZ + (mv.toZ - mv.fromZ) * e;
+            if (p >= 1) { h.userData.move = null; saveScene(); }
+          }
+        }
+        const tw = h.userData.turnTo;
+        if (tw) {
+          tw.t += dt;
+          if (tw.t >= 0) {
+            const p = Math.min(1, tw.t / tw.dur);
+            const e = p * p * (3 - 2 * p);
+            it.rotY = tw.from + (tw.to - tw.from) * e;
+            if (p >= 1) { h.userData.turnTo = null; saveScene(); }
+          }
+        }
+        const gr = h.userData.grow;
+        if (gr) {
+          gr.t += dt;
+          if (gr.t >= 0) {
+            const p = Math.min(1, gr.t / gr.dur);
+            const e = p * p * (3 - 2 * p);
+            it.scale = gr.from + (gr.to - gr.from) * e;
+            if (p >= 1) { h.userData.grow = null; saveScene(); }
+          }
+        }
+
+        let x = it.x, y = it.y, z = it.z;
+        let rotY = it.rotY || 0;
+        let s = it.scale || 1;
+        let k = 1;
+
+        h.userData.t = (h.userData.t || 0) + dt * (it.mspeed || 1);
+        const t = h.userData.t;
+        if (h.userData.mixer) h.userData.mixer.update(dt * (it.mspeed || 1));
+
+        switch (it.motion) {
+          case "hover":
+            y = it.y + 0.35 + Math.sin(t * 1.2) * 0.06;
+            break;
+          case "bob":
+            y = it.y + Math.sin(t * 2) * 0.05;
+            break;
+          case "spin":
+            rotY = (it.rotY || 0) + t * 1.2;
+            break;
+          case "orbit":
+            x = it.x + Math.cos(t) * 0.5;
+            z = it.z + Math.sin(t) * 0.5;
+            rotY = (it.rotY || 0) - t;
+            break;
+        }
+
+        const a = h.userData.anim;
+        if (a) {
+          a.t += dt;
+          if (a.t < 0) { h.visible = false; continue; }
+          h.visible = true;
+          const p = Math.min(1, a.t / a.dur);
+          const e = 1 - Math.pow(1 - p, 3);
+          if (a.type === "fade") {
+            k = e;
+          } else if (a.type === "rise") {
+            y -= (1 - e) * 0.9;
+            k = e;
+          } else if (a.type === "pop") {
+            s = s * e * (1.18 - 0.18 * e);
+            k = Math.min(1, e * 2.5);
+          } else if (a.type === "sparkle") {
+            s = s * e;
+            y += (1 - e) * 0.35;
+            rotY += (1 - e) * 3;
+            k = e;
+          } else if (a.type === "fadeout") {
+            k = 1 - e;
+          }
+          if (p >= 1) {
+            h.userData.anim = null;
+            if (a.type === "fadeout") { h.visible = false; k = 0; }
+            else k = 1;
+          }
+        }
+
+        h.position.set(x, y, z);
+        h.rotation.y = rotY;
+        h.scale.setScalar(s);
+        setHolderOpacity(h, k);
+      }
+    }
+
+    // ---------- Scene persistence ----------
+    function sceneKey() { return currentWorld ? `bp-scene-${currentWorld.world_id}` : null; }
+    let saveTimer = null;
+    function saveScene() {
+      const key = sceneKey();
+      if (!key || !placedGroup || !currentWorld) return;
+      clearTimeout(saveTimer);
+      const worldId = currentWorld.world_id;
+      saveTimer = setTimeout(() => {
+        const items = placedGroup.children.map((h) => h.userData.item);
+        try { localStorage.setItem(key, JSON.stringify({ floorY, items })); } catch {}
+        fetch("/api/scene", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ world_id: worldId, floor_y: floorY, items }),
+        }).catch(() => {});
+      }, 400);
+    }
+
+    async function restoreScene() {
+      clearPlaced();
+      const key = sceneKey();
+      if (!key || !currentWorld) return;
+      let data = null;
+      try {
+        const r = await fetch(`/api/scene?world_id=${encodeURIComponent(currentWorld.world_id)}`);
+        const d = await r.json();
+        if (r.ok && d.cloud && d.scene) {
+          data = { floorY: d.scene.floor_y, items: d.scene.items || [] };
+        }
+      } catch {}
+      if (!data) {
+        try { data = JSON.parse(localStorage.getItem(key) || "null"); } catch {}
+      }
+      if (!data) { renderShelf(); return; }
+      if (!colliderReady) {
+        floorY = typeof data.floorY === "number" ? data.floorY : -1.4;
+        floorRange.value = String(floorY);
+      }
+      for (const item of data.items || []) {
+        let rec = null;
+        try { rec = await getPropRecord(item.propId); } catch {}
+        if (!rec) continue;
+        if (!item.iid) item.iid = "i" + Math.random().toString(36).slice(2, 9);
+        if (!item.name) item.name = rec.name || "Prop";
+        if (!item.kind) item.kind = rec.kind || "prop";
+        try { await buildHolder(rec, item); } catch {}
+      }
+      renderShelf();
+    }
+
+    function clearPlaced() {
+      if (!placedGroup) return;
+      deselectProp();
+      while (placedGroup.children.length) {
+        const h = placedGroup.children[0];
+        placedGroup.remove(h);
+      }
+    }
+
+    // ---------- Pointer handling in dress mode ----------
+    let downAt = null;
+    let dragging = false;
+
+    function ndc(e) {
+      return new THREE.Vector2(
+        (e.clientX / window.innerWidth) * 2 - 1,
+        -(e.clientY / window.innerHeight) * 2 + 1
+      );
+    }
+    // ---------- Room collider: real floors, tables and walls ----------
+    let colliderRoot = null;
+    let colliderReady = false;
+
+    async function loadCollider(world) {
+      // drop any previous room's collider
+      if (colliderRoot) {
+        scene3.remove(colliderRoot);
+        colliderRoot = null;
+      }
+      colliderReady = false;
+      updateFloorBtn();
+      if (!world || !world.collider_url) return;
+
+      let gltf;
+      try {
+        const buf = await fetchAsset(world.collider_url);
+        gltf = await parseGlb(buf);
+      } catch {
+        return; // no collider, fall back to the flat plane
+      }
+      if (!currentWorld || currentWorld.world_id !== world.world_id) return;
+
+      const root = gltf.scene;
+      root.visible = false;
+      root.traverse((o) => { if (o.isMesh) o.raycast = THREE.Mesh.prototype.raycast; });
+      scene3.add(root);
+
+      // The splat is flipped 180 degrees on X to stand upright. The collider may
+      // or may not need the same. Try both, keep whichever puts a floor under us.
+      const orientations = [
+        [1, 0, 0, 0],
+        [0, 0, 0, 1],
+      ];
+      let found = null;
+      for (const q of orientations) {
+        root.quaternion.set(q[0], q[1], q[2], q[3]);
+        root.updateMatrixWorld(true);
+        const down = new THREE.Raycaster(
+          camera.position.clone(),
+          new THREE.Vector3(0, -1, 0),
+          0.05,
+          8
+        );
+        const hits = down.intersectObject(root, true);
+        if (hits.length) {
+          const drop = camera.position.y - hits[0].point.y;
+          if (drop > 0.3 && drop < 4.5) { found = hits[0].point.y; break; }
+        }
+      }
+
+      if (found === null) {
+        scene3.remove(root);
+        return; // couldn't make sense of it \u2014 stay on the manual plane
+      }
+
+      colliderRoot = root;
+      colliderReady = true;
+      floorY = found;
+      floorRange.value = String(Math.max(-3, Math.min(0.5, floorY)));
+      if (gridHelper) gridHelper.position.y = floorY;
+      updateFloorBtn();
+      if (mode === "dress" && !selected) {
+        hintEl.textContent = armedPropId
+          ? "Tap a surface, or use Place here"
+          : "Tap a prop on the shelf, or tap a placed prop to adjust it";
+      }
+    }
+
+    function updateFloorBtn() {
+      floorBtn.hidden = mode !== "dress" || colliderReady;
+      if (colliderReady) floorStrip.classList.remove("on");
+    }
+
+    // A real point on a real surface: floor, rug, table top, step
+    function surfacePoint(e) {
+      if (!colliderReady || !colliderRoot) return null;
+      raycaster.setFromCamera(ndc(e), camera);
+      const hits = raycaster.intersectObject(colliderRoot, true);
+      for (const h of hits) {
+        if (h.distance < 0.15) continue;
+        let up = 1;
+        if (h.face) {
+          const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+          up = n.y;
+        }
+        if (up > 0.45) return h.point.clone(); // walk-on-able, not a wall
+      }
+      return null;
+    }
+
+    function floorPoint(e) {
+      raycaster.setFromCamera(ndc(e), camera);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -floorY);
+      const pt = new THREE.Vector3();
+      return raycaster.ray.intersectPlane(plane, pt) ? pt : null;
+    }
+
+    // Where the camera is looking, on the floor, a set distance ahead
+    function pointInFront(dist) {
+      const dir = new THREE.Vector3();
+      camera.getWorldDirection(dir);
+      dir.y = 0;
+      if (dir.lengthSq() < 1e-6) dir.set(0, 0, -1);
+      dir.normalize();
+      const p = camera.position.clone().add(dir.multiplyScalar(dist));
+      p.y = floorY;
+      return p;
+    }
+
+    // Forgiving version for placement: never returns null, never lands a mile away
+    function placementPoint(e) {
+      if (e) {
+        const surf = surfacePoint(e);
+        if (surf && surf.distanceTo(camera.position) < 25) return surf;
+      }
+      const pt = e ? floorPoint(e) : null;
+      if (!pt) return pointInFront(2.5);
+      if (pt.distanceTo(camera.position) > 15) return pointInFront(2.5);
+      return pt;
+    }
+
+    // Straight down from a spot, find the real surface under it
+    function dropToSurface(pt) {
+      if (!colliderReady || !colliderRoot) return pt;
+      const from = pt.clone();
+      from.y += 2.5;
+      const down = new THREE.Raycaster(from, new THREE.Vector3(0, -1, 0), 0.05, 12);
+      const hits = down.intersectObject(colliderRoot, true);
+      for (const h of hits) {
+        let up = 1;
+        if (h.face) {
+          const n = h.face.normal.clone().transformDirection(h.object.matrixWorld);
+          up = n.y;
+        }
+        if (up > 0.45) return h.point.clone();
+      }
+      return pt;
+    }
+
+    async function placeArmedAt(pt) {
+      if (!armedPropId) return;
+      let rec = null;
+      try { rec = await getPropRecord(armedPropId); } catch {}
+      if (!rec) {
+        alert("Couldn't fetch that prop from the library.");
+        armedPropId = null;
+        renderShelf();
+        return;
+      }
+      const item = {
+        propId: rec.id,
+        kind: rec.kind || "prop",
+        iid: "i" + Math.random().toString(36).slice(2, 9),
+        name: rec.name || "Prop",
+        x: pt.x, y: pt.y, z: pt.z, rotY: 0, scale: 1,
+      };
+      try {
+        const holder = await buildHolder(rec, item);
+        armedPropId = null;
+        renderShelf();
+        selectProp(holder);
+        saveScene();
+      } catch {
+        alert("Couldn't load that prop.");
+      }
+    }
+
+    placeHereBtn.onclick = async () => {
+      if (!armedPropId) return;
+      await placeArmedAt(dropToSurface(pointInFront(2.5)));
+    };
+    function propAt(e) {
+      if (!placedGroup || !placedGroup.children.length) return null;
+      raycaster.setFromCamera(ndc(e), camera);
+      const hits = raycaster.intersectObjects(placedGroup.children, true);
+      if (!hits.length) return null;
+      let o = hits[0].object;
+      while (o.parent && o.parent !== placedGroup) o = o.parent;
+      return o.parent === placedGroup ? o : null;
+    }
+
+    function onCanvasDown(e) {
+      if (mode === "direct") { lookDown(e); return; }
+      if (mode !== "dress") return;
+      downAt = { x: e.clientX, y: e.clientY, t: Date.now() };
+      dragging = false;
+    }
+    function onCanvasMove(e) {
+      if (mode === "direct") { lookMove(e); return; }
+      if (mode !== "dress" || !downAt || !selected) return;
+      const moved = Math.hypot(e.clientX - downAt.x, e.clientY - downAt.y);
+      if (moved > 8) dragging = true;
+      if (dragging) {
+        const surf = surfacePoint(e);
+        const pt = surf || floorPoint(e);
+        if (pt) {
+          selected.holder.position.set(pt.x, pt.y, pt.z);
+          Object.assign(selected.item, { x: pt.x, y: pt.y, z: pt.z });
+          if (selectBox) selectBox.update();
+          saveScene();
+        }
+      }
+    }
+    async function onCanvasUp(e) {
+      if (mode === "direct") { lookUp(e); return; }
+      if (mode !== "dress" || !downAt) return;
+      const wasTap = !dragging && Date.now() - downAt.t < 500;
+      downAt = null;
+      dragging = false;
+      if (!wasTap) return;
+
+      // Tap on a placed prop selects it
+      const hit = propAt(e);
+      if (hit) { selectProp(hit); return; }
+
+      // Tap on the floor places the armed prop
+      if (armedPropId) {
+        await placeArmedAt(placementPoint(e));
+        return;
+      }
+
+      deselectProp();
+    }
+
+    // ---------- Selection + editing ----------
+    function selectProp(holder) {
+      deselectProp();
+      selected = { holder, item: holder.userData.item };
+      selectBox = new THREE.BoxHelper(holder, 0xf0a63e);
+      scene3.add(selectBox);
+      rotRange.value = String(((selected.item.rotY || 0) * 180 / Math.PI) % 360);
+      scaleRange.value = String(selected.item.scale || 1);
+      motionSelect.value = selected.item.motion || "none";
+      mspeedRange.value = String(selected.item.mspeed || 1);
+      entranceSelect.value = selected.item.entrance || "none";
+      tagInput.value = selected.item.name || "";
+      editStrip.classList.add("on");
+      floorStrip.classList.remove("on");
+      hintEl.textContent = "Drag to move \u00b7 sliders to turn and size";
+    }
+    function deselectProp() {
+      if (selectBox) { scene3.remove(selectBox); selectBox = null; }
+      selected = null;
+      editStrip.classList.remove("on");
+      if (mode === "dress") {
+        hintEl.textContent = armedPropId ? "Tap the grid, or use Place here" : "Tap a prop on the shelf, or tap a placed prop to adjust it";
+      }
+    }
+    rotRange.oninput = () => {
+      if (!selected) return;
+      const rad = parseFloat(rotRange.value) * Math.PI / 180;
+      selected.holder.rotation.y = rad;
+      selected.item.rotY = rad;
+      if (selectBox) selectBox.update();
+      saveScene();
+    };
+    scaleRange.oninput = () => {
+      if (!selected) return;
+      const s = parseFloat(scaleRange.value);
+      selected.holder.scale.setScalar(s);
+      selected.item.scale = s;
+      if (selectBox) selectBox.update();
+      saveScene();
+    };
+    propRemoveBtn.onclick = () => {
+      if (!selected) return;
+      placedGroup.remove(selected.holder);
+      deselectProp();
+      saveScene();
+    };
+    propDoneBtn.onclick = () => deselectProp();
+
+    tagInput.oninput = () => {
+      if (!selected) return;
+      selected.item.name = tagInput.value.slice(0, 40) || "Item";
+      saveScene();
+    };
+
+    // Menu: tuck every control strip away for a clean view of the set
+    panelToggle.onclick = () => {
+      const off = document.body.classList.toggle("panels-off");
+      panelToggle.textContent = off ? "Menu" : "Hide";
+      hintEl.textContent = off
+        ? "Controls hidden \u00b7 tap Menu to bring them back"
+        : (mode === "direct"
+            ? "Drag to look \u00b7 use the stick to walk"
+            : "Tap a prop on the shelf, or tap a placed prop to adjust it");
+    };
+
+    // ---------- Motion, entrances and stage speed ----------
+    motionSelect.onchange = () => {
+      if (!selected) return;
+      selected.item.motion = motionSelect.value;
+      selected.holder.userData.t = 0;
+      if (motionSelect.value === "none") {
+        selected.holder.position.set(selected.item.x, selected.item.y, selected.item.z);
+      }
+      saveScene();
+    };
+    mspeedRange.oninput = () => {
+      if (!selected) return;
+      selected.item.mspeed = parseFloat(mspeedRange.value);
+      saveScene();
+    };
+    entranceSelect.onchange = () => {
+      if (!selected) return;
+      selected.item.entrance = entranceSelect.value;
+      saveScene();
+    };
+    entrancePlayBtn.onclick = () => {
+      if (!selected) return;
+      const type = selected.item.entrance || "none";
+      if (type === "none") return;
+      selected.holder.userData.anim = { type, t: 0, dur: 0.9 };
+    };
+
+    // ---------- The Director: plain language in, choreography out ----------
+    function holderByIid(iid) {
+      if (!placedGroup) return null;
+      return placedGroup.children.find((h) => h.userData.item && h.userData.item.iid === iid) || null;
+    }
+
+    function scheduleDirect(cmds) {
+      for (const c of cmds || []) {
+        const h = holderByIid(c.target);
+        if (!h) continue;
+        const it = h.userData.item;
+        const start = Math.max(0, Number(c.start) || 0);
+        const dur = Math.min(20, Math.max(0.2, Number(c.dur) || 1.5));
+        if (c.verb === "moveto") {
+          directSched.push({ t: -start, fn: () => {
+            let to = new THREE.Vector3(Number(c.x) || 0, it.y, Number(c.z) || 0);
+            to = dropToSurface(to);
+            if (it.kind === "cast" && (to.x !== it.x || to.z !== it.z)) {
+              it.rotY = Math.atan2(to.x - it.x, to.z - it.z);
+            }
+            h.userData.move = { t: 0, dur, fromX: it.x, fromY: it.y, fromZ: it.z, toX: to.x, toY: to.y, toZ: to.z };
+          } });
+        } else if (c.verb === "motion") {
+          directSched.push({ t: -start, fn: () => {
+            it.motion = ["none", "hover", "bob", "spin", "orbit"].includes(c.type) ? c.type : "none";
+            it.mspeed = Math.min(3, Math.max(0.25, Number(c.speed) || 1));
+            h.userData.t = 0;
+            saveScene();
+          } });
+        } else if (c.verb === "appear") {
+          directSched.push({ t: -start, fn: () => {
+            h.visible = false;
+            h.userData.anim = { type: ["fade", "rise", "pop", "sparkle"].includes(c.type) ? c.type : "fade", t: 0, dur: 0.9 };
+          } });
+        } else if (c.verb === "vanish") {
+          directSched.push({ t: -start, fn: () => {
+            h.userData.anim = { type: "fadeout", t: 0, dur: 0.8 };
+          } });
+        } else if (c.verb === "turn") {
+          directSched.push({ t: -start, fn: () => {
+            h.userData.turnTo = { t: 0, dur, from: it.rotY || 0, to: (Number(c.deg) || 0) * Math.PI / 180 };
+          } });
+        } else if (c.verb === "size") {
+          directSched.push({ t: -start, fn: () => {
+            h.userData.grow = { t: 0, dur, from: it.scale || 1, to: Math.min(4, Math.max(0.1, Number(c.scale) || 1)) };
+          } });
+        }
+      }
+    }
+
+    async function runDirection() {
+      const prompt = directInput.value.trim();
+      if (!prompt) return;
+      if (!placedGroup || !placedGroup.children.length) {
+        hintEl.textContent = "Place something in the scene first, then direct it.";
+        return;
+      }
+      directGo.disabled = true;
+      directGo.textContent = "\u2026";
+      try {
+        const counts = {};
+        const items = placedGroup.children.map((h) => {
+          const it = h.userData.item;
+          if (!it.iid) it.iid = "i" + Math.random().toString(36).slice(2, 9);
+          const base = it.name || "Item";
+          counts[base] = (counts[base] || 0) + 1;
+          return {
+            iid: it.iid,
+            name: counts[base] > 1 ? `${base} ${counts[base]}` : base,
+            kind: it.kind || "prop",
+            x: +it.x.toFixed(2),
+            z: +it.z.toFixed(2),
+          };
+        });
+        const r = await fetch("/api/direct", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt,
+            items,
+            cam: { x: +camera.position.x.toFixed(2), z: +camera.position.z.toFixed(2) },
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `Director failed (${r.status}).`);
+        scheduleDirect(d.commands);
+        hintEl.textContent = d.say || "Rolling.";
+      } catch (err) {
+        hintEl.textContent = err.message || "Direction failed.";
+      }
+      directGo.disabled = false;
+      directGo.textContent = "Go";
+    }
+    directGo.onclick = runDirection;
+    directInput.onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); runDirection(); } };
+
+    actionBtn.onclick = () => {
+      if (!placedGroup) return;
+      let i = 0;
+      for (const h of placedGroup.children) {
+        const it = h.userData.item;
+        if (!it || !it.entrance || it.entrance === "none") continue;
+        h.userData.anim = { type: it.entrance, t: -i * 0.28, dur: 0.9 };
+        h.visible = false;
+        i++;
+      }
+    };
+
+    function setTimeScale(v) {
+      timeScale = v;
+      for (const b of tsButtons) {
+        if (b.el) b.el.classList.toggle("on", b.v === v);
+      }
+    }
+    for (const b of tsButtons) {
+      if (b.el) b.el.onclick = () => setTimeScale(b.v);
+    }
+  </script>
+</body>
+</html>
