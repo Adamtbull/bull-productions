@@ -65,16 +65,25 @@ export function operationIdOf(value) {
 }
 
 export async function generate({ textPrompt, imageBase64, model, autoEnhance, displayName }) {
-  const body = { model };
-  if (textPrompt) body.text_prompt = textPrompt;
-  if (imageBase64) body.image_base64 = imageBase64;
+  // Marble takes the prompt as a nested object, not flat fields — this is the
+  // same shape a finished world stores under world_prompt, read back off a real
+  // response: a type discriminator, the text, and the image carried either by
+  // uri or inline base64. Sending text_prompt and image_base64 at the top level
+  // is what the 422 was objecting to.
+  const worldPrompt = { type: imageBase64 ? 'image' : 'text', is_pano: false };
+  if (textPrompt) worldPrompt.text_prompt = textPrompt;
+  // The frontend resizes to JPEG before upload, hence the extension.
+  if (imageBase64) worldPrompt.image_prompt = { data_base64: imageBase64, extension: 'jpg' };
+
+  const body = { model, world_prompt: worldPrompt };
   if (displayName) body.display_name = displayName;
   if (autoEnhance !== undefined) body.auto_enhance = Boolean(autoEnhance);
 
-  // Field names here are inferred, not documented. Log the keys (never the
-  // values — image_base64 is a whole photo) so a 422 can be matched against
-  // exactly what was sent.
-  console.log('worldlabs generate keys:', Object.keys(body).join(','));
+  // Keys only, never values — image_base64 is a whole photo.
+  console.log('worldlabs generate:', JSON.stringify({
+    ...body,
+    world_prompt: { ...worldPrompt, image_prompt: worldPrompt.image_prompt ? '<omitted>' : undefined },
+  }).slice(0, 600));
   const r = await fetch(`${API}/worlds:generate`, {
     method: 'POST',
     headers: headers({ 'Content-Type': 'application/json' }),
@@ -119,14 +128,6 @@ export async function listWorlds() {
     const raw = pick(d, 'worlds', 'items', 'results', 'data') || (Array.isArray(d) ? d : []);
     const list = (Array.isArray(raw) ? raw : []).map(normalizeWorld).filter(Boolean);
     console.log(`worldlabs: list via ${attempt.method} ${attempt.path} returned ${list.length} world(s)`);
-    // The asset mapping is settled now, so the whole item no longer needs
-    // logging. world_prompt is still worth seeing: a stored world carries the
-    // prompt as a nested object, which is the likeliest reason a flat
-    // text_prompt is rejected by worlds:generate with a 422.
-    const sample = Array.isArray(raw) ? raw[0] : null;
-    if (sample?.world_prompt) {
-      console.log('worldlabs: world_prompt shape —', JSON.stringify(sample.world_prompt).slice(0, 900));
-    }
     return list;
   }
 
