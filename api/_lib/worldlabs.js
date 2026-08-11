@@ -119,9 +119,12 @@ export async function listWorlds() {
     const raw = pick(d, 'worlds', 'items', 'results', 'data') || (Array.isArray(d) ? d : []);
     const list = (Array.isArray(raw) ? raw : []).map(normalizeWorld).filter(Boolean);
     console.log(`worldlabs: list via ${attempt.method} ${attempt.path} returned ${list.length} world(s)`);
-    // A shape we can reach but can't read is worth seeing in full — that is a
-    // field-naming problem in normalizeWorld, not a routing one.
-    if (!list.length) console.log('worldlabs: list body was', JSON.stringify(d).slice(0, 1500));
+    // Reaching the endpoint is not the same as reading it: the first response
+    // carried ids and names but null splats and collider, so the field names
+    // still have to be confirmed rather than guessed. Log one raw item — it is
+    // scene metadata, not credentials — until the mapping is settled.
+    const sample = Array.isArray(raw) ? raw[0] : null;
+    if (sample) console.log('worldlabs: raw list item —', JSON.stringify(sample).slice(0, 1800));
     return list;
   }
 
