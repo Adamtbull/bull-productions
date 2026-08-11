@@ -92,25 +92,36 @@ export async function getOperation(operationId) {
   return parse(r, 'operation');
 }
 
-// The project brief documented worlds:generate but not how to list existing
-// worlds, and the obvious guess 404s. Rather than guess again, try the plausible
-// spellings and keep whichever answers — the Backlot recovers by itself, and the
-// log line records which one was right so this can be pinned down properly.
-const WORLD_LIST_PATHS = ['/worlds', '/worlds:list', '/worlds:search', '/generations', '/operations'];
-let worldListPath = null;
+// Marble uses Google-style custom methods: the verb is part of the path after a
+// colon and the call is a POST. Probing showed GET /worlds and GET /worlds:search
+// return 404 while GET /worlds:list returns 405 — method not allowed, not missing.
+// So the list endpoint exists and simply wants POST, matching worlds:generate.
+const WORLD_LIST_ATTEMPTS = [
+  { method: 'POST', path: '/worlds:list' },
+  { method: 'POST', path: '/worlds:search' },
+  { method: 'GET', path: '/worlds' },
+];
+let worldList = null;
 
 export async function listWorlds() {
   const tried = [];
-  for (const path of worldListPath ? [worldListPath] : WORLD_LIST_PATHS) {
-    const r = await fetch(`${API}${path}`, { headers: headers() });
-    if (!r.ok) { tried.push(`${path} -> ${r.status}`); continue; }
+  for (const attempt of worldList ? [worldList] : WORLD_LIST_ATTEMPTS) {
+    const init = { method: attempt.method, headers: headers() };
+    if (attempt.method === 'POST') {
+      init.headers = headers({ 'Content-Type': 'application/json' });
+      init.body = '{}';
+    }
+    const r = await fetch(`${API}${attempt.path}`, init);
+    if (!r.ok) { tried.push(`${attempt.method} ${attempt.path} -> ${r.status}`); continue; }
 
-    worldListPath = path;
-    console.log(`worldlabs: worlds list endpoint is ${API}${path}`);
-    const d = await parse(r, `list ${path}`);
+    worldList = attempt;
+    const d = await parse(r, `list ${attempt.path}`);
     const raw = pick(d, 'worlds', 'items', 'results', 'data') || (Array.isArray(d) ? d : []);
     const list = (Array.isArray(raw) ? raw : []).map(normalizeWorld).filter(Boolean);
-    if (!list.length) console.log('worldlabs: list returned no usable worlds, shape was', JSON.stringify(d).slice(0, 1000));
+    console.log(`worldlabs: list via ${attempt.method} ${attempt.path} returned ${list.length} world(s)`);
+    // A shape we can reach but can't read is worth seeing in full — that is a
+    // field-naming problem in normalizeWorld, not a routing one.
+    if (!list.length) console.log('worldlabs: list body was', JSON.stringify(d).slice(0, 1500));
     return list;
   }
 
