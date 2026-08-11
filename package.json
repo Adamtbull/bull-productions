@@ -1,7 +1,16 @@
 {
-  "name": "bull-productions-recovery",
+  "name": "bull-productions",
   "private": true,
-  "version": "0.1.0",
-  "description": "Recovery source-of-truth for Bull Productions",
-  "engines": { "node": ">=24" }
+  "version": "0.2.0",
+  "description": "Photo or prompt in, walkable splat-rendered 3D set out.",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0"
+  },
+  "scripts": {
+    "test": "node test/routes.test.mjs"
+  }
 }
