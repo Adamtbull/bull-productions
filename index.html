@@ -564,6 +564,13 @@
         </select>
         <button class="btn small" id="entrance-play" type="button">Play</button>
       </div>
+      <div class="edit-row">
+        <span class="edit-label">Effect</span>
+        <select id="fx-select">
+          <option value="none">No effect</option>
+        </select>
+        <button class="btn small" id="fx-burst" type="button">Burst</button>
+      </div>
     </div>
 
     <div class="strip" id="stage-strip">
@@ -858,6 +865,7 @@
           gridHelper.position.set(camera.position.x, floorY, camera.position.z);
         }
         updateProps(dt);
+        updateFx(dt);
         if (selectBox) selectBox.update();
         renderer.render(scene3, camera);
       });
@@ -969,6 +977,8 @@
     const placeHereBtn = document.getElementById("place-here");
     const motionSelect = document.getElementById("motion-select");
     const mspeedRange = document.getElementById("mspeed-range");
+    const fxSelect = document.getElementById("fx-select");
+    const fxBurstBtn = document.getElementById("fx-burst");
     const entranceSelect = document.getElementById("entrance-select");
     const entrancePlayBtn = document.getElementById("entrance-play");
     const stageStrip = document.getElementById("stage-strip");
@@ -1680,6 +1690,315 @@
       }
     }
 
+    // ---------- Effects ----------
+    // 23 presets. Continuous ones run for as long as the item carries them;
+    // one-shot ones fire from the Burst button and from Action.
+    //
+    // Physics per particle: p += v*dt, v.y += gravity*dt, v *= 1 - drag*dt.
+    // A positive gravity therefore reads as buoyancy (flame, smoke) and a
+    // negative one as weight (rain, debris).
+    const FX_ONESHOT = new Set(["explosion", "impact", "puff", "shockwave", "nova"]);
+
+    const FX_PRESETS = {
+      // — fire and heat —
+      fire:      { label: "Fire",         pool: 220, rate: 95, life: [0.45, 0.95], size: [0.10, 0.20], speed: [0.5, 1.1], spread: 0.10, shape: "up",    cone: 0.30, gravity:  0.9, drag: 1.3, grow: 0.5, blend: "add",    colors: [[1,0.96,0.60],[1,0.48,0.10],[0.45,0.07,0.02]] },
+      torch:     { label: "Torch",        pool: 130, rate: 55, life: [0.35, 0.70], size: [0.07, 0.14], speed: [0.4, 0.8], spread: 0.05, shape: "up",    cone: 0.18, gravity:  1.1, drag: 1.5, grow: 0.4, blend: "add",    colors: [[1,0.98,0.75],[1,0.62,0.18],[0.5,0.10,0.02]] },
+      campfire:  { label: "Campfire",     pool: 260, rate: 110, life: [0.6, 1.3],  size: [0.12, 0.26], speed: [0.35, 0.9], spread: 0.22, shape: "up",   cone: 0.40, gravity:  0.7, drag: 1.1, grow: 0.7, blend: "add",    colors: [[1,0.90,0.50],[1,0.40,0.08],[0.30,0.05,0.02]] },
+      blueflame: { label: "Blue flame",   pool: 200, rate: 90, life: [0.40, 0.85], size: [0.09, 0.18], speed: [0.5, 1.0], spread: 0.09, shape: "up",    cone: 0.26, gravity:  1.0, drag: 1.3, grow: 0.5, blend: "add",    colors: [[0.85,0.98,1],[0.25,0.65,1],[0.05,0.12,0.55]] },
+
+      // — smoke and vapour —
+      smoke:     { label: "Smoke",        pool: 180, rate: 34, life: [1.6, 3.0],   size: [0.16, 0.34], speed: [0.15, 0.40], spread: 0.14, shape: "up",  cone: 0.30, gravity:  0.35, drag: 0.7, grow: 2.4, blend: "normal", colors: [[0.55,0.56,0.58],[0.38,0.39,0.42],[0.20,0.21,0.23]], alpha: 0.5 },
+      steam:     { label: "Steam",        pool: 160, rate: 40, life: [1.0, 2.0],   size: [0.12, 0.28], speed: [0.25, 0.55], spread: 0.10, shape: "up",  cone: 0.34, gravity:  0.55, drag: 0.9, grow: 2.6, blend: "normal", colors: [[1,1,1],[0.88,0.92,0.95],[0.75,0.80,0.85]], alpha: 0.42 },
+      dust:      { label: "Dust motes",   pool: 120, rate: 16, life: [2.5, 5.0],   size: [0.02, 0.05], speed: [0.02, 0.10], spread: 0.85, shape: "sphere",           gravity: -0.02, drag: 0.3, grow: 1.0, blend: "add",    colors: [[1,0.95,0.80],[0.9,0.85,0.7],[0.7,0.65,0.5]], alpha: 0.55 },
+
+      // — sparks and light —
+      sparks:    { label: "Sparks",       pool: 160, rate: 55, life: [0.35, 0.85], size: [0.02, 0.05], speed: [1.2, 2.8], spread: 0.05, shape: "sphere",            gravity: -2.6, drag: 0.5, grow: 0.6, blend: "add",    colors: [[1,1,0.85],[1,0.75,0.25],[0.8,0.25,0.05]] },
+      embers:    { label: "Embers",       pool: 140, rate: 22, life: [1.2, 2.6],   size: [0.03, 0.07], speed: [0.15, 0.5], spread: 0.20, shape: "up",   cone: 0.55, gravity:  0.5, drag: 0.8, grow: 0.7, blend: "add",    colors: [[1,0.85,0.45],[1,0.45,0.12],[0.35,0.06,0.02]] },
+      fireflies: { label: "Fireflies",    pool: 70,  rate: 9,  life: [2.5, 5.0],   size: [0.04, 0.08], speed: [0.06, 0.18], spread: 0.9, shape: "sphere",           gravity:  0.03, drag: 0.6, grow: 1.0, blend: "add",    colors: [[0.85,1,0.55],[0.55,0.95,0.3],[0.15,0.4,0.08]], flicker: 5.5 },
+      glow:      { label: "Glow",         pool: 90,  rate: 26, life: [0.9, 1.7],   size: [0.16, 0.32], speed: [0.03, 0.14], spread: 0.34, shape: "sphere",          gravity:  0.05, drag: 1.0, grow: 1.5, blend: "add",    colors: [[1,0.92,0.65],[1,0.72,0.30],[0.6,0.35,0.08]], alpha: 0.5 },
+
+      // — magic —
+      magic:     { label: "Magic",        pool: 190, rate: 70, life: [0.8, 1.7],   size: [0.05, 0.12], speed: [0.3, 0.9], spread: 0.30, shape: "sphere",           gravity:  0.45, drag: 0.9, grow: 0.8, blend: "add",    colors: [[1,0.95,1],[0.72,0.45,1],[0.28,0.10,0.65]], flicker: 3.5 },
+      swirl:     { label: "Arcane swirl", pool: 200, rate: 80, life: [1.0, 2.0],   size: [0.04, 0.10], speed: [0.5, 1.0], spread: 0.42, shape: "orbit",            gravity:  0.30, drag: 0.35, grow: 0.7, blend: "add",   colors: [[0.85,1,1],[0.30,0.75,1],[0.10,0.20,0.75]] },
+      portal:    { label: "Portal",       pool: 220, rate: 100, life: [0.7, 1.4],  size: [0.05, 0.13], speed: [0.7, 1.5], spread: 0.60, shape: "ring",             gravity:  0.10, drag: 1.4, grow: 0.6, blend: "add",    colors: [[1,0.85,1],[0.85,0.25,0.95],[0.30,0.05,0.45]] },
+      shield:    { label: "Energy shield",pool: 200, rate: 85, life: [0.9, 1.6],   size: [0.05, 0.11], speed: [0.25, 0.6], spread: 0.75, shape: "orbit",           gravity:  0.02, drag: 0.25, grow: 0.9, blend: "add",   colors: [[0.85,1,1],[0.25,0.85,0.95],[0.05,0.30,0.55]], alpha: 0.7 },
+
+      // — weather and water —
+      rain:      { label: "Rain",         pool: 260, rate: 130, life: [0.7, 1.1],  size: [0.02, 0.04], speed: [0.1, 0.3], spread: 1.5, shape: "down",  drop: 2.6, gravity: -9.0, drag: 0.0, grow: 1.0, blend: "normal", colors: [[0.75,0.85,1],[0.6,0.75,0.95],[0.5,0.65,0.9]], alpha: 0.55 },
+      snow:      { label: "Snow",         pool: 200, rate: 45, life: [2.4, 4.2],   size: [0.04, 0.09], speed: [0.05, 0.2], spread: 1.6, shape: "down",  drop: 2.6, gravity: -0.35, drag: 0.9, grow: 1.0, blend: "normal", colors: [[1,1,1],[0.95,0.97,1],[0.88,0.92,1]], alpha: 0.85, flicker: 1.6 },
+      bubbles:   { label: "Bubbles",      pool: 110, rate: 20, life: [1.8, 3.4],   size: [0.05, 0.13], speed: [0.1, 0.3], spread: 0.22, shape: "up",    cone: 0.22, gravity:  0.55, drag: 0.5, grow: 1.3, blend: "normal", colors: [[0.85,0.97,1],[0.7,0.9,1],[0.6,0.85,1]], alpha: 0.4 },
+
+      // — one-shot hits —
+      explosion: { label: "Explosion",    pool: 300, burst: 240, life: [0.45, 1.1], size: [0.10, 0.30], speed: [3.0, 8.0], spread: 0.10, shape: "sphere",          gravity: -3.2, drag: 2.6, grow: 1.1, blend: "add",    colors: [[1,1,0.9],[1,0.55,0.12],[0.25,0.06,0.03]] },
+      impact:    { label: "Impact",       pool: 160, burst: 110, life: [0.20, 0.55], size: [0.02, 0.06], speed: [3.5, 9.0], spread: 0.04, shape: "sphere",         gravity: -5.5, drag: 3.4, grow: 0.5, blend: "add",    colors: [[1,1,0.95],[1,0.85,0.4],[0.85,0.35,0.08]] },
+      puff:      { label: "Dust puff",    pool: 150, burst: 90,  life: [0.6, 1.4],  size: [0.12, 0.30], speed: [0.8, 2.4], spread: 0.10, shape: "disc",            gravity: -0.5, drag: 2.8, grow: 2.2, blend: "normal", colors: [[0.72,0.68,0.60],[0.55,0.51,0.45],[0.34,0.32,0.28]], alpha: 0.5 },
+      shockwave: { label: "Shockwave",    pool: 180, burst: 150, life: [0.30, 0.60], size: [0.06, 0.14], speed: [5.0, 7.5], spread: 0.05, shape: "disc",           gravity:  0.0, drag: 4.5, grow: 1.4, blend: "add",    colors: [[1,1,1],[0.7,0.9,1],[0.2,0.45,0.9]] },
+      nova:      { label: "Magic nova",   pool: 260, burst: 200, life: [0.5, 1.2],  size: [0.06, 0.16], speed: [2.5, 6.0], spread: 0.06, shape: "sphere",          gravity:  0.4, drag: 2.2, grow: 1.0, blend: "add",    colors: [[1,0.97,1],[0.80,0.45,1],[0.25,0.08,0.7]] },
+    };
+
+    const FX_IDS = Object.keys(FX_PRESETS);
+
+    // One soft round sprite, shared by every emitter.
+    let fxTexture = null;
+    function fxSprite() {
+      if (fxTexture) return fxTexture;
+      const c = document.createElement("canvas");
+      c.width = c.height = 64;
+      const g = c.getContext("2d").createRadialGradient(32, 32, 0, 32, 32, 32);
+      g.addColorStop(0, "rgba(255,255,255,1)");
+      g.addColorStop(0.45, "rgba(255,255,255,0.55)");
+      g.addColorStop(1, "rgba(255,255,255,0)");
+      const ctx = c.getContext("2d");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, 64, 64);
+      fxTexture = new THREE.CanvasTexture(c);
+      return fxTexture;
+    }
+
+    const FX_VERT = `
+      attribute float aSize;
+      attribute vec3 aColor;
+      attribute float aAlpha;
+      varying vec3 vColor;
+      varying float vAlpha;
+      void main() {
+        vColor = aColor;
+        vAlpha = aAlpha;
+        vec4 mv = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = aSize * (320.0 / max(0.001, -mv.z));
+        gl_Position = projectionMatrix * mv;
+      }`;
+
+    const FX_FRAG = `
+      uniform sampler2D uTex;
+      varying vec3 vColor;
+      varying float vAlpha;
+      void main() {
+        float a = texture2D(uTex, gl_PointCoord).a * vAlpha;
+        if (a < 0.01) discard;
+        gl_FragColor = vec4(vColor, a);
+      }`;
+
+    const rand = (a, b) => a + Math.random() * (b - a);
+
+    class FxEmitter {
+      constructor(id) {
+        this.id = id;
+        this.p = FX_PRESETS[id];
+        this.oneShot = FX_ONESHOT.has(id);
+        const n = this.p.pool;
+        this.n = n;
+        this.pos = new Float32Array(n * 3);
+        this.vel = new Float32Array(n * 3);
+        this.col = new Float32Array(n * 3);
+        this.size = new Float32Array(n);
+        this.alpha = new Float32Array(n);
+        this.life = new Float32Array(n);
+        this.max = new Float32Array(n);
+        this.base = new Float32Array(n);
+        this.seed = new Float32Array(n);
+        this.carry = 0;
+        this.origin = new THREE.Vector3();
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute("position", new THREE.BufferAttribute(this.pos, 3));
+        geo.setAttribute("aColor", new THREE.BufferAttribute(this.col, 3));
+        geo.setAttribute("aSize", new THREE.BufferAttribute(this.size, 1));
+        geo.setAttribute("aAlpha", new THREE.BufferAttribute(this.alpha, 1));
+        geo.setDrawRange(0, n);
+        geo.boundingSphere = new THREE.Sphere(new THREE.Vector3(), 40);
+
+        this.mesh = new THREE.Points(geo, new THREE.ShaderMaterial({
+          uniforms: { uTex: { value: fxSprite() } },
+          vertexShader: FX_VERT,
+          fragmentShader: FX_FRAG,
+          transparent: true,
+          depthWrite: false,
+          blending: this.p.blend === "add" ? THREE.AdditiveBlending : THREE.NormalBlending,
+        }));
+        this.mesh.frustumCulled = false;
+        this.mesh.renderOrder = 3;
+      }
+
+      spawn(i) {
+        const p = this.p, o = this.origin;
+        const sp = rand(p.speed[0], p.speed[1]);
+        let x = o.x, y = o.y, z = o.z, vx = 0, vy = 0, vz = 0;
+        const a = Math.random() * Math.PI * 2;
+
+        if (p.shape === "up") {
+          const r = Math.random() * (p.spread || 0);
+          x += Math.cos(a) * r; z += Math.sin(a) * r;
+          const c = p.cone || 0.3;
+          vx = Math.cos(a) * rand(0, c) * sp; vz = Math.sin(a) * rand(0, c) * sp; vy = sp;
+        } else if (p.shape === "down") {
+          const r = Math.random() * (p.spread || 1);
+          x += Math.cos(a) * r; z += Math.sin(a) * r; y += p.drop || 2.5;
+          vx = rand(-0.1, 0.1) * sp; vz = rand(-0.1, 0.1) * sp; vy = -sp;
+        } else if (p.shape === "disc") {
+          const r = Math.random() * (p.spread || 0.1);
+          x += Math.cos(a) * r; z += Math.sin(a) * r;
+          vx = Math.cos(a) * sp; vz = Math.sin(a) * sp; vy = rand(0.05, 0.45) * sp;
+        } else if (p.shape === "ring") {
+          const r = p.spread || 0.6;
+          x += Math.cos(a) * r; z += Math.sin(a) * r;
+          vx = Math.cos(a) * sp * 0.25; vz = Math.sin(a) * sp * 0.25; vy = rand(0.5, 1) * sp;
+        } else if (p.shape === "orbit") {
+          const r = p.spread || 0.5;
+          x += Math.cos(a) * r; z += Math.sin(a) * r;
+          y += rand(-0.15, 0.9);
+          vx = -Math.sin(a) * sp; vz = Math.cos(a) * sp; vy = rand(-0.1, 0.3) * sp;
+        } else { // sphere
+          const u = Math.random() * 2 - 1, s = Math.sqrt(1 - u * u);
+          const r = Math.random() * (p.spread || 0);
+          x += s * Math.cos(a) * r; y += u * r; z += s * Math.sin(a) * r;
+          vx = s * Math.cos(a) * sp; vy = u * sp; vz = s * Math.sin(a) * sp;
+        }
+
+        const i3 = i * 3;
+        this.pos[i3] = x; this.pos[i3 + 1] = y; this.pos[i3 + 2] = z;
+        this.vel[i3] = vx; this.vel[i3 + 1] = vy; this.vel[i3 + 2] = vz;
+        this.max[i] = rand(p.life[0], p.life[1]);
+        this.life[i] = this.max[i];
+        this.base[i] = rand(p.size[0], p.size[1]);
+        this.seed[i] = Math.random() * 6.283;
+      }
+
+      burst() {
+        const want = this.p.burst || Math.floor(this.n * 0.6);
+        let made = 0;
+        for (let i = 0; i < this.n && made < want; i++) {
+          if (this.life[i] <= 0) { this.spawn(i); made++; }
+        }
+      }
+
+      update(dt, time) {
+        const p = this.p;
+        // Continuous emitters top up from a fractional rate accumulator.
+        if (!this.oneShot && p.rate) {
+          this.carry += p.rate * dt;
+          let due = Math.floor(this.carry);
+          this.carry -= due;
+          for (let i = 0; i < this.n && due > 0; i++) {
+            if (this.life[i] <= 0) { this.spawn(i); due--; }
+          }
+        }
+
+        const g = p.gravity || 0, drag = Math.max(0, 1 - (p.drag || 0) * dt);
+        const c = p.colors, grow = p.grow == null ? 1 : p.grow;
+        const maxAlpha = p.alpha == null ? 1 : p.alpha;
+        let live = 0;
+
+        for (let i = 0; i < this.n; i++) {
+          if (this.life[i] <= 0) { this.alpha[i] = 0; continue; }
+          this.life[i] -= dt;
+          if (this.life[i] <= 0) { this.alpha[i] = 0; continue; }
+          live++;
+
+          const i3 = i * 3;
+          this.vel[i3 + 1] += g * dt;
+          this.vel[i3] *= drag; this.vel[i3 + 1] *= drag; this.vel[i3 + 2] *= drag;
+          this.pos[i3] += this.vel[i3] * dt;
+          this.pos[i3 + 1] += this.vel[i3 + 1] * dt;
+          this.pos[i3 + 2] += this.vel[i3 + 2] * dt;
+
+          // u runs 0 -> 1 across the particle's life.
+          const u = 1 - this.life[i] / this.max[i];
+          const seg = u < 0.5 ? 0 : 1;
+          const f = u < 0.5 ? u * 2 : (u - 0.5) * 2;
+          const c0 = c[seg], c1 = c[seg + 1];
+          this.col[i3] = c0[0] + (c1[0] - c0[0]) * f;
+          this.col[i3 + 1] = c0[1] + (c1[1] - c0[1]) * f;
+          this.col[i3 + 2] = c0[2] + (c1[2] - c0[2]) * f;
+
+          this.size[i] = this.base[i] * (1 + (grow - 1) * u);
+          // Quick fade in, long fade out, so nothing pops on or off.
+          let al = u < 0.12 ? u / 0.12 : 1 - (u - 0.12) / 0.88;
+          if (p.flicker) al *= 0.65 + 0.35 * Math.sin(time * p.flicker + this.seed[i]);
+          this.alpha[i] = Math.max(0, al) * maxAlpha;
+        }
+
+        const g2 = this.mesh.geometry;
+        g2.attributes.position.needsUpdate = true;
+        g2.attributes.aColor.needsUpdate = true;
+        g2.attributes.aSize.needsUpdate = true;
+        g2.attributes.aAlpha.needsUpdate = true;
+        this.live = live;
+        return live;
+      }
+
+      dispose() {
+        this.mesh.geometry.dispose();
+        this.mesh.material.dispose();
+      }
+    }
+
+    // iid -> emitter. Rebuilt lazily from whatever the items currently carry.
+    const fxEmitters = new Map();
+    let fxTime = 0;
+
+    function fxFor(iid, id) {
+      const cur = fxEmitters.get(iid);
+      if (cur && cur.id === id) return cur;
+      if (cur) { scene3.remove(cur.mesh); cur.dispose(); fxEmitters.delete(iid); }
+      if (!FX_PRESETS[id]) return null;
+      const e = new FxEmitter(id);
+      scene3.add(e.mesh);
+      fxEmitters.set(iid, e);
+      return e;
+    }
+
+    function fxDrop(iid) {
+      const e = fxEmitters.get(iid);
+      if (!e) return;
+      scene3.remove(e.mesh);
+      e.dispose();
+      fxEmitters.delete(iid);
+    }
+
+    function fxClear() {
+      for (const iid of [...fxEmitters.keys()]) fxDrop(iid);
+    }
+
+    // Fire a one-shot effect on one item, or on everything carrying one.
+    function fxBurst(holder) {
+      const list = holder ? [holder] : (placedGroup ? placedGroup.children : []);
+      let n = 0;
+      for (const h of list) {
+        const it = h.userData.item;
+        if (!it || !it.fx || !FX_ONESHOT.has(it.fx)) continue;
+        const e = fxFor(it.iid, it.fx);
+        if (!e) continue;
+        h.getWorldPosition(e.origin);
+        e.burst();
+        n++;
+      }
+      return n;
+    }
+
+    function updateFx(dt) {
+      if (!placedGroup || !scene3) return;
+      fxTime += dt;
+
+      const seen = new Set();
+      for (const h of placedGroup.children) {
+        const it = h.userData.item;
+        if (!it || !it.fx || it.fx === "none") continue;
+        const e = fxFor(it.iid, it.fx);
+        if (!e) continue;
+        seen.add(it.iid);
+        h.getWorldPosition(e.origin);
+        // A hidden item shouldn't keep emitting, but its particles still finish.
+        if (!h.visible && !e.oneShot) e.carry = 0;
+      }
+
+      for (const [iid, e] of fxEmitters) {
+        const live = e.update(dt, fxTime);
+        // A one-shot that has burnt out and is no longer assigned can go.
+        if (!seen.has(iid) && live === 0) fxDrop(iid);
+      }
+    }
+
     // ---------- Scene persistence ----------
     function sceneKey() { return currentWorld ? `bp-scene-${currentWorld.world_id}` : null; }
     let saveTimer = null;
@@ -1734,6 +2053,7 @@
     function clearPlaced() {
       if (!placedGroup) return;
       deselectProp();
+      fxClear();
       while (placedGroup.children.length) {
         const h = placedGroup.children[0];
         placedGroup.remove(h);
@@ -1986,6 +2306,7 @@
       motionSelect.value = selected.item.motion || "none";
       mspeedRange.value = String(selected.item.mspeed || 1);
       entranceSelect.value = selected.item.entrance || "none";
+      fxSelect.value = selected.item.fx || "none";
       tagInput.value = selected.item.name || "";
       editStrip.classList.add("on");
       floorStrip.classList.remove("on");
@@ -2065,6 +2386,41 @@
       const type = selected.item.entrance || "none";
       if (type === "none") return;
       selected.holder.userData.anim = { type, t: 0, dur: 0.9 };
+    };
+
+    // Populate the effect list from the presets, one-shots grouped separately.
+    (function fillFxSelect() {
+      const mk = (label) => {
+        const g = document.createElement("optgroup");
+        g.label = label;
+        return g;
+      };
+      const cont = mk("Continuous"), once = mk("Hit");
+      for (const id of FX_IDS) {
+        const o = document.createElement("option");
+        o.value = id;
+        o.textContent = FX_PRESETS[id].label;
+        (FX_ONESHOT.has(id) ? once : cont).appendChild(o);
+      }
+      fxSelect.appendChild(cont);
+      fxSelect.appendChild(once);
+    })();
+
+    fxSelect.onchange = () => {
+      if (!selected) return;
+      const id = fxSelect.value;
+      selected.item.fx = id === "none" ? null : id;
+      if (id === "none") fxDrop(selected.item.iid);
+      // Show a hit effect the moment it is chosen, so it can be judged.
+      else if (FX_ONESHOT.has(id)) fxBurst(selected.holder);
+      saveScene();
+    };
+    fxBurstBtn.onclick = () => {
+      if (!selected) return;
+      const id = selected.item.fx;
+      if (!id) { hintEl.textContent = "Pick an effect first"; return; }
+      if (FX_ONESHOT.has(id)) fxBurst(selected.holder);
+      else hintEl.textContent = FX_PRESETS[id].label + " runs on its own";
     };
 
     // ---------- The Director: plain language in, choreography out ----------
@@ -2172,6 +2528,12 @@
         h.userData.anim = { type: it.entrance, t: -i * 0.28, dur: 0.9 };
         h.visible = false;
         i++;
+      }
+      // Stagger any hit effects behind the entrances so they read as one take.
+      for (const h of placedGroup.children) {
+        const it = h.userData.item;
+        if (!it || !it.fx || !FX_ONESHOT.has(it.fx)) continue;
+        setTimeout(() => fxBurst(h), Math.max(0, i - 1) * 280 + 200);
       }
     };
 
