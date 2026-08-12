@@ -1,0 +1,6 @@
+{
+  "rewrites": [
+    { "source": "/api/props-list", "destination": "/api/library?kind=props" },
+    { "source": "/api/cast-list", "destination": "/api/library?kind=cast" }
+  ]
+}

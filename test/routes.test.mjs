@@ -21,8 +21,8 @@ for (const k of ['ANTHROPIC_API_KEY','TRIPO_API_KEY','WORLDLABS_API_KEY','SUPABA
 
 console.log('=== method guards (wrong verb must 405 + set Allow) ===');
 for (const [name, wrong] of [['generate','GET'],['operation','POST'],['worlds','POST'],
-  ['props-generate','GET'],['props-task','POST'],['props-list','POST'],['props-proxy','POST'],
-  ['cast-generate','GET'],['cast-task','POST'],['cast-list','POST'],['direct','GET'],['scene','DELETE'],['show','DELETE']]) {
+  ['props-generate','GET'],['props-task','POST'],['library','POST'],['props-proxy','POST'],
+  ['cast-generate','GET'],['cast-task','POST'],['direct','GET'],['scene','DELETE'],['show','DELETE']]) {
   await check(`${name} rejects ${wrong}`, async () => {
     const h = await load(name); const [req, res] = mock(wrong); await h(req, res);
     eq(res.statusCode, 405, 'status');
@@ -42,6 +42,7 @@ const cases = [
   ['show','POST',{body:{}},'action'],
   ['show','POST',{body:{action:'create_show'}},'title'],
   ['show','POST',{body:{action:'write_next'}},'show_id'],
+  ['library','GET',{query:{}},'kind'],
 ];
 // Configured, so validation is reached rather than the not-configured guard.
 const KEYS = {ANTHROPIC_API_KEY:'sk-test',TRIPO_API_KEY:'t',WORLDLABS_API_KEY:'w',
@@ -80,10 +81,11 @@ await check('show POST 500s without Supabase', async () => {
 });
 
 console.log('\n=== unconfigured Supabase degrades, does not error ===');
-for (const name of ['props-list','cast-list']) {
-  await check(`${name} returns cloud:false`, async () => {
-    const h = await load(name); const [req, res] = mock('GET'); await h(req, res);
+for (const kind of ['props','cast']) {
+  await check(`library?kind=${kind} returns cloud:false`, async () => {
+    const h = await load('library'); const [req, res] = mock('GET', { query: { kind } }); await h(req, res);
     eq(res.statusCode, 200, 'status'); eq(parse(res).cloud, false, 'cloud');
+    if (!Array.isArray(parse(res)[kind])) throw new Error(`missing ${kind} array`);
   });
 }
 

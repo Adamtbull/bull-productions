@@ -11,7 +11,8 @@ Built mobile-first — the whole thing is meant to be used from a phone.
 
 ```
 index.html            the entire frontend, self-contained
-api/                  one file per route, 13 routes
+api/                  13 routes in 12 files (the plan caps functions at 12;
+                      props-list and cast-list share one via vercel.json rewrites)
 api/_lib/             shared helpers (http, supabase, tripo, worldlabs)
 test/                 route guards, effects engine, headless browser boot
 docs/                 API contract, recovery notes, multiview spec
