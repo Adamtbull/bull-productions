@@ -114,14 +114,23 @@ here. Quad topology is for hand-retopologising in Blender; Tripo's own
 GLB gets triangulated on export regardless. Turning it on risks the rig → retarget
 stages that produce the idle/walk/run/hurt/fall clips.
 
-Because tripo3d.ai is unreachable from the build environment, the exact spelling
-of the newest HD tier could not be confirmed by reading the docs. So
-`texture_quality`, `quad` and `model_version` are declared optional
-(`CAST_OPTIONAL_KEYS`): `startTask` logs Tripo's full rejection body — which names
-the offending field and usually lists what it will accept — then retries once
-without those fields and reports the degrade back through `warn`. A wrong guess
-therefore costs one validation round-trip and a plainer model, never a failed
-build. Auth and out-of-credit failures are explicitly never retried.
+Because tripo3d.ai is unreachable from the build environment, the exact caps and
+spellings could not be confirmed by reading the docs, so `startTask` adapts to
+what Tripo says instead. It logs the full rejection body and **responds to the
+field Tripo actually named**: a `face_limit` complaint steps the polygon budget
+down the `FACE_LIMIT_LADDER` (60k → 40k → 24k → 16k → 10k) while keeping
+`texture_quality` and `model_version`; a complaint naming any other optional
+field drops just that field. Bounded at five attempts, then it gives up with
+Tripo's own wording. Auth and out-of-credit failures are never retried.
+
+Whatever combination is accepted is logged as `settled on {...}` — pin those
+values to the env vars above to skip the retry round-trips on later builds.
+
+This matters more than it sounds: the first version dropped every unverified
+field at once, so a complaint about `face_limit` cost `texture_quality` and
+`model_version` too, and a build silently fell back to Tripo's default model at
+standard texture quality. Losing polygons is cheap; losing the settings that
+carry a close-up is not.
 
 `clean_background` runs each supplied photo through an OpenAI `gpt-image-1` edit
 before Tripo ever sees it, swapping only the backdrop for a plain grey studio

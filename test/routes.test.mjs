@@ -201,12 +201,47 @@ await check('an unaccepted quality field is dropped and retried, not fatal', asy
     { body: { code: 0, data: { task_id: 'task-retry' } } },
   ]);
   const id = await tripo.startTask(
-    { type: 'multiview_to_model', texture_quality: 'detailed', quad: true, face_limit: 60000 },
+    { type: 'multiview_to_model', texture_quality: 'detailed', model_version: 'P1' },
     tripo.CAST_OPTIONAL_KEYS);
   eq(id, 'task-retry', 'task id');
   eq(seen.length, 2, 'attempts');
-  if ('texture_quality' in seen[1] || 'quad' in seen[1]) throw new Error('retry kept the rejected fields');
-  eq(seen[1].face_limit, 60000, 'retry keeps verified fields');
+  if ('texture_quality' in seen[1]) throw new Error('retry kept the rejected field');
+  eq(seen[1].model_version, 'P1', 'retry keeps fields Tripo did not complain about');
+});
+
+// The bug this replaced: Tripo said "face_limit value is invalid" and the
+// retry threw away texture_quality and model_version instead — losing the
+// close-up quality to fix a complaint about polygon count.
+await check('a face_limit complaint steps the budget down, keeping the quality settings', async () => {
+  const seen = stubTripo([
+    { ok: false, status: 400, body: { code: 1004, message: 'One or more of your parameter is invalid, face_limit value is invalid' } },
+    { body: { code: 0, data: { task_id: 'task-fl' } } },
+  ]);
+  const id = await tripo.startTask(
+    { type: 'multiview_to_model', model_version: 'P1-20260311', texture_quality: 'detailed', face_limit: 60000 },
+    tripo.CAST_OPTIONAL_KEYS);
+  eq(id, 'task-fl', 'task id');
+  eq(seen[1].face_limit, 40000, 'stepped down one rung');
+  eq(seen[1].texture_quality, 'detailed', 'texture quality kept');
+  eq(seen[1].model_version, 'P1-20260311', 'model version kept');
+});
+await check('it keeps stepping down until Tripo accepts, then stops', async () => {
+  const reject = { ok: false, status: 400, body: { code: 1004, message: 'face_limit value is invalid' } };
+  const seen = stubTripo([reject, reject, reject, { body: { code: 0, data: { task_id: 'task-low' } } }]);
+  await tripo.startTask(
+    { type: 'multiview_to_model', texture_quality: 'detailed', face_limit: 60000 },
+    tripo.CAST_OPTIONAL_KEYS);
+  eq(seen.map((s) => s.face_limit).join(','), '60000,40000,24000,16000', 'ladder');
+  eq(seen[3].texture_quality, 'detailed', 'quality survived the whole ladder');
+});
+await check('it gives up rather than looping forever', async () => {
+  stubTripo(Array.from({ length: 8 }, () => ({ ok: false, status: 400, body: { code: 1004, message: 'invalid parameter' } })));
+  let threw = false;
+  try {
+    await tripo.startTask({ type: 'image_to_model', texture_quality: 'detailed', face_limit: 60000, model_version: 'x' },
+      tripo.CAST_OPTIONAL_KEYS);
+  } catch { threw = true; }
+  if (!threw) throw new Error('never gave up');
 });
 await check('a degraded build tells the caller, so the app can say so', async () => {
   stubTripo([
@@ -215,8 +250,8 @@ await check('a degraded build tells the caller, so the app can say so', async ()
   ]);
   let told = null;
   await tripo.startTask({ type: 'image_to_model', quad: true }, tripo.CAST_OPTIONAL_KEYS,
-    (dropped) => { told = dropped; });
-  if (!told || !told.includes('quad')) throw new Error('degrade was not reported to the caller');
+    (adjustments) => { told = adjustments; });
+  if (!told || !told.join(' ').includes('quad')) throw new Error('degrade was not reported to the caller');
 });
 await check('an out-of-credit failure is never retried', async () => {
   const seen = stubTripo([

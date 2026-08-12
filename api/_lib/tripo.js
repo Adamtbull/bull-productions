@@ -47,8 +47,15 @@ export function castQuality() {
 }
 
 // Fields whose exact names/values could not be verified against the live docs.
-// A rejection naming one of these costs a retry, not the build.
-export const CAST_OPTIONAL_KEYS = ['texture_quality', 'quad', 'model_version'];
+// A rejection naming one of these costs a retry, not the build. Ordered by how
+// little we want to lose them: face_limit is only polygons, texture_quality and
+// model_version are what make a close-up hold up, so they go last.
+export const CAST_OPTIONAL_KEYS = ['face_limit', 'quad', 'texture_quality', 'model_version'];
+
+// Tripo caps face_limit per model version and won't say what the cap is — it
+// just calls the value invalid. Rather than lose the settings that matter, step
+// the polygon budget down until one is accepted. Ends at props' proven 10k.
+export const FACE_LIMIT_LADDER = [60000, 40000, 24000, 16000, 10000];
 
 export function castModelVersion() {
   return process.env.TRIPO_CAST_MODEL_VERSION || MODEL_VERSION;
@@ -125,25 +132,64 @@ function isParamComplaint(error) {
 // optionalKeys are fields we are not certain this account's Tripo tier accepts.
 // On a parameter complaint they are dropped and the task retried once, so an
 // unverified quality setting degrades the model instead of failing the build.
-export async function startTask(payload, optionalKeys = [], onDegrade) {
-  try {
-    return await postTask(payload);
-  } catch (error) {
-    const droppable = optionalKeys.filter((k) => k in payload);
-    if (!droppable.length || !isParamComplaint(error)) throw error;
+// Tripo names the offending field in its rejection ("face_limit value is
+// invalid"), so respond to what it actually said rather than dropping every
+// unverified field at once — the first version of this threw away
+// texture_quality and model_version to fix a complaint about face_limit, which
+// cost the whole close-up quality for nothing.
+function adaptPayload(payload, optionalKeys, error, adjustments) {
+  const text = `${error.message || ''} ${error.body || ''}`.toLowerCase();
+  const named = optionalKeys.filter((k) => k in payload && text.includes(k.toLowerCase()));
 
-    const retry = { ...payload };
-    for (const k of droppable) delete retry[k];
-    console.warn(
-      `tripo: ${payload.type} rejected — retrying without ${droppable.join(', ')}. ` +
-      `Tripo said: ${error.message}`);
-    const taskId = await postTask(retry);
-    console.warn(`tripo: retry succeeded without ${droppable.join(', ')} — quality reduced for this build.`);
-    // A silent quality drop is worse than a slow build: tell the caller so the
-    // user finds out from the app, not from a server log they cannot read.
-    if (typeof onDegrade === 'function') onDegrade(droppable, error.message);
-    return taskId;
+  // A capped polygon budget costs detail, not fidelity — step it down first.
+  if (named.includes('face_limit') || (!named.length && 'face_limit' in payload)) {
+    const current = Number(payload.face_limit);
+    const lower = FACE_LIMIT_LADDER.find((v) => v < current);
+    const next = { ...payload };
+    if (lower) {
+      next.face_limit = lower;
+      adjustments.push(`face budget ${current} → ${lower}`);
+    } else {
+      delete next.face_limit;
+      adjustments.push('face budget left to Tripo');
+    }
+    return next;
   }
+
+  const drop = named.length ? named : optionalKeys.filter((k) => k in payload);
+  if (!drop.length) return null;
+  const next = { ...payload };
+  for (const k of drop) delete next[k];
+  adjustments.push(`without ${drop.join(', ')}`);
+  return next;
+}
+
+export async function startTask(payload, optionalKeys = [], onDegrade) {
+  let attempt = { ...payload };
+  const adjustments = [];
+
+  for (let tries = 0; tries < 5; tries++) {
+    try {
+      const taskId = await postTask(attempt);
+      if (adjustments.length) {
+        console.warn(`tripo: ${payload.type} accepted after ${adjustments.join('; ')}.`);
+        console.warn(`tripo: settled on ${JSON.stringify({
+          model_version: attempt.model_version, face_limit: attempt.face_limit,
+          texture_quality: attempt.texture_quality })} — pin these to skip the retries.`);
+        // A silent quality drop is worse than a slow build: tell the caller so
+        // the user finds out from the app, not a server log they cannot read.
+        if (typeof onDegrade === 'function') onDegrade(adjustments);
+      }
+      return taskId;
+    } catch (error) {
+      if (!isParamComplaint(error)) throw error;
+      const next = adaptPayload(attempt, optionalKeys, error, adjustments);
+      if (!next) throw error;
+      console.warn(`tripo: ${payload.type} rejected (${error.message}) — retrying ${adjustments[adjustments.length - 1]}.`);
+      attempt = next;
+    }
+  }
+  throw new Error('Tripo rejected every quality setting we tried. Check the logs for its exact wording.');
 }
 
 export async function getTask(taskId) {

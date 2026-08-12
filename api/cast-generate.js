@@ -60,8 +60,8 @@ export default async function handler(req, res) {
     // Cast run at the close-up tier — see castQuality() in _lib/tripo.js.
     const quality = tripo.castQuality();
     const notes = warn ? [warn] : [];
-    const onDegrade = (dropped) => {
-      notes.push(`Tripo wouldn't take ${dropped.join(' or ')} on this account, so this build ran at standard quality.`);
+    const onDegrade = (adjustments) => {
+      notes.push(`Tripo trimmed the settings for this build: ${adjustments.join('; ')}.`);
     };
 
     if (supplied === 1) {
