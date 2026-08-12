@@ -64,6 +64,13 @@ via an importmap. It is served as-is.
   run so far plus the sets and cast that actually exist, and pitch a recap,
   staged beats and a cliffhanger; keep it and the storyline continues from
   there next time. Opening a show applies its look to the whole app.
+- **One-off scenes** — the same writer without the series, for any set opened
+  straight from the Backlot. A Write button next to the Director pitches a
+  self-contained sketch (title, logline, beats, a punchline ender) staged in
+  the current set with the cast that exists — type an idea first or let it
+  surprise you, and the active look sets the tone. Every beat has a Stage
+  button that hands it to the Director. The last scene per set is remembered;
+  tap Write with an empty box to bring it back.
 - **Walk camera** — thumb stick to move, one-finger drag to look, ground-snapped
   and wall-blocked. Installs to the Home Screen and clears Safari's bars.
 

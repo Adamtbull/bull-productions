@@ -452,6 +452,12 @@
     .pill.on { border-color: var(--tungsten); background: #241d0f; }
     #stage-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
     #cast-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
+    #scene-strip { bottom: calc(46px + env(safe-area-inset-bottom)); max-height: 44vh; overflow-y: auto; }
+    #scene-title { font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #scene-logline { font-size: 12px; color: var(--dust); margin: 2px 0 4px; }
+    #scene-beats { margin: 4px 0 2px; padding-left: 18px; display: grid; gap: 8px; }
+    #scene-beats li { font-size: 13px; line-height: 1.35; }
+    #scene-beats .beat-stage { margin-left: 8px; }
     .cast-grid {
       display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 8px;
     }
@@ -743,6 +749,7 @@
       <div class="edit-row">
         <input type="text" id="direct-input" placeholder="Direct the scene, e.g. the skull glides to the door" autocomplete="off" />
         <button class="btn small" id="direct-go" type="button">Go</button>
+        <button class="btn small ghost" id="scene-write" type="button">Write</button>
       </div>
       <div class="edit-row">
         <button class="btn small" id="action-btn" type="button">Action</button>
@@ -775,6 +782,15 @@
         <button class="btn small ghost" id="cast-cancel" type="button">Cancel</button>
         <button class="btn small" id="cast-build" type="button" disabled>Build actor</button>
       </div>
+    </div>
+    <div class="strip" id="scene-strip">
+      <div class="edit-row">
+        <span class="edit-label">Scene</span>
+        <strong id="scene-title"></strong>
+        <button class="btn small ghost" id="scene-close" type="button">Close</button>
+      </div>
+      <div id="scene-logline"></div>
+      <ol id="scene-beats"></ol>
     </div>
     <input id="prop-photo-input" type="file" accept="image/*" hidden />
     <input id="cast-photo-input" type="file" accept="image/*" hidden />
@@ -1336,6 +1352,9 @@ Cliffhanger: ${e.cliffhanger}` : "");
     async function openWorld(world) {
       ensureRenderer();
       currentWorld = world;
+      scenePitch = null;
+      try { scenePitch = JSON.parse(localStorage.getItem(`bp-pitch-${world.world_id}`) || "null"); } catch {}
+      sceneStrip.classList.remove("on");
       viewerEl.classList.add("active");
       viewerTitle.textContent = world.display_name || world.caption || "Untitled set";
       fidelityBtn.textContent = fastMode ? "Fast" : "Full";
@@ -1450,6 +1469,12 @@ Cliffhanger: ${e.cliffhanger}` : "");
     const holdRow = document.getElementById("hold-row");
     const giveSelect = document.getElementById("give-select");
     const throwSelect = document.getElementById("throw-select");
+    const sceneWriteBtn = document.getElementById("scene-write");
+    const sceneStrip = document.getElementById("scene-strip");
+    const sceneTitle = document.getElementById("scene-title");
+    const sceneLogline = document.getElementById("scene-logline");
+    const sceneBeats = document.getElementById("scene-beats");
+    const sceneCloseBtn = document.getElementById("scene-close");
     const stageStrip = document.getElementById("stage-strip");
     const actionBtn = document.getElementById("action-btn");
     const directInput = document.getElementById("direct-input");
@@ -3431,6 +3456,84 @@ Cliffhanger: ${e.cliffhanger}` : "");
         if (!it || !it.fx || !FX_ONESHOT.has(it.fx)) continue;
         setTimeout(() => fxBurst(h), Math.max(0, i - 1) * 280 + 200);
       }
+    };
+
+    // ---------- One-off scenes: the writers' room, minus the series ----------
+    // Write pitches a self-contained sketch staged in THIS set with the cast
+    // that exists; each beat pipes straight into the Director with one tap.
+    let scenePitch = null;
+    const LOOK_TONES = {
+      anime: "anime saga", clay: "clay deathmatch", noir: "drama",
+      blockbuster: "action-comedy", cartoon: "comedy", comic: "comedy",
+    };
+
+    function renderScenePitch() {
+      if (!scenePitch) return;
+      sceneTitle.textContent = scenePitch.title || "Untitled scene";
+      sceneLogline.textContent = scenePitch.logline || "";
+      sceneBeats.innerHTML = "";
+      const beats = [...(scenePitch.beats || [])];
+      if (scenePitch.ender) beats.push({ action: scenePitch.ender });
+      for (const b of beats) {
+        const li = document.createElement("li");
+        const txt = document.createElement("span");
+        txt.textContent = b.action;
+        li.appendChild(txt);
+        const go = document.createElement("button");
+        go.type = "button";
+        go.className = "btn small ghost beat-stage";
+        go.textContent = "Stage";
+        go.onclick = () => { directInput.value = b.action; runDirection(); };
+        li.appendChild(go);
+        sceneBeats.appendChild(li);
+      }
+      deselectProp();
+      shelfEl.classList.remove("on");
+      sceneStrip.classList.add("on");
+    }
+
+    async function writeScene() {
+      if (!currentWorld || sceneWriteBtn.disabled) return;
+      const idea = directInput.value.trim();
+      // A tap with no idea reopens the last scene written for this set.
+      if (!idea && scenePitch) { renderScenePitch(); return; }
+      sceneWriteBtn.disabled = true;
+      hintEl.textContent = "The writers’ room is on it…";
+      try {
+        const here = (currentWorld.display_name || currentWorld.caption || "This set").slice(0, 80);
+        const sets = [...new Set([here,
+          ...[...document.querySelectorAll("#backlot .set-name")].map((el) => el.textContent.trim()),
+        ])].filter(Boolean).slice(0, 24);
+        const onSet = placedGroup
+          ? placedGroup.children.map((h) => h.userData.item && h.userData.item.kind === "cast" && h.userData.item.name)
+          : [];
+        const cast = [...new Set([...onSet, ...[...cloudCast.values()].map((c) => c.name)])]
+          .filter(Boolean).slice(0, 24);
+        const r = await fetch("/api/show", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "write_scene", idea,
+            tone: LOOK_TONES[lookSelect.value] || "comedy",
+            set: here, sets, cast,
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `The scene failed (${r.status}).`);
+        scenePitch = d.pitch;
+        try { localStorage.setItem(`bp-pitch-${currentWorld.world_id}`, JSON.stringify(scenePitch)); } catch {}
+        directInput.value = "";
+        renderScenePitch();
+        hintEl.textContent = "Scene's in · stage the beats one at a time";
+      } catch (err) {
+        flashHint(err.message || "The scene failed.");
+      }
+      sceneWriteBtn.disabled = false;
+    }
+    sceneWriteBtn.onclick = writeScene;
+    sceneCloseBtn.onclick = () => {
+      sceneStrip.classList.remove("on");
+      if (mode === "dress") shelfEl.classList.add("on");
     };
 
     function setTimeScale(v) {

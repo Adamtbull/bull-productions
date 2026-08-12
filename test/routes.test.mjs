@@ -79,6 +79,14 @@ await check('show POST 500s without Supabase', async () => {
   eq(res.statusCode, 500, 'status');
   if (!/not configured/i.test(parse(res).error || '')) throw new Error('unclear error');
 });
+await check('write_scene needs only the Anthropic key, never Supabase', async () => {
+  const h = await load('show');
+  const [req, res] = mock('POST', { body: { action: 'write_scene', idea: 'a duel' } });
+  await h(req, res);
+  eq(res.statusCode, 500, 'status');
+  const e = parse(res).error || '';
+  if (!/ANTHROPIC/i.test(e)) throw new Error(`error was "${e}" — one-offs must not be gated on Supabase`);
+});
 
 console.log('\n=== unconfigured Supabase degrades, does not error ===');
 for (const kind of ['props','cast']) {

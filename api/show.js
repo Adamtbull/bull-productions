@@ -51,6 +51,23 @@ const PITCH_SCHEMA = {
   additionalProperties: false,
 };
 
+// One-off videos use the same writer with the series stripped out: no recap,
+// no cliffhanger, nothing saved. The ender is the punchline instead.
+const ONE_OFF_SCHEMA = {
+  type: 'object',
+  properties: {
+    title: { type: 'string', description: 'The sketch title. Punchy.' },
+    logline: { type: 'string', description: 'One sentence selling the sketch.' },
+    beats: PITCH_SCHEMA.properties.beats,
+    ender: {
+      type: 'string',
+      description: 'The closing beat — the punchline image the whole sketch was building to. Stageable like any beat.',
+    },
+  },
+  required: ['title', 'logline', 'beats', 'ender'],
+  additionalProperties: false,
+};
+
 function clip(v, n) {
   return String(v ?? '').trim().slice(0, n);
 }
@@ -92,6 +109,52 @@ How to make it hook:
 - Prefer the sets and cast listed above. Invent at most one new set or character per
   episode, and only when the story truly needs it.
 - End on a cliffhanger that raises a question the audience has to see answered.`;
+}
+
+function oneOffSystem(idea, tone, here, sets, cast) {
+  return `You are writing a one-off short — a self-contained sketch a few minutes long,
+made by one person on a phone inside a walkable 3D set. It is not part of any series:
+no recap, no cliffhanger, no setup for later. It has to land on its own.
+
+Tone: ${TONES[tone] || TONES['comedy']}
+${idea ? `What it's about: ${idea}` : 'No brief given — pitch something fun that suits the set and cast below.'}
+
+They are filming in: ${here || 'an unnamed set'}. Keep every beat there unless a second
+location is genuinely worth the trip.
+
+Other sets that exist:
+${sets.length ? sets.map((s) => `- ${s}`).join('\n') : '- (none)'}
+
+Cast who exist as characters right now:
+${cast.length ? cast.map((c) => `- ${c}`).join('\n') : '- (none yet — keep the cast small so they are easy to create)'}
+
+Rules:
+- 3 to 5 beats, each stageable with what this app can do: characters walking, running,
+  appearing, vanishing, turning, flinching, falling over, holding and throwing props,
+  and effects (fire, smoke, explosions, comic POW hits, auras, lens flares). No
+  dialogue-heavy scenes, no facial acting.
+- Escalate beat to beat, and make the ender the punchline — the single image or
+  reversal the whole sketch was building to.
+- Refer to cast by the names above. Invent at most one new character, and only when
+  the sketch truly needs it.`;
+}
+
+async function writeOneOff(idea, tone, here, sets, cast) {
+  const client = new Anthropic();
+  const message = await client.messages.create({
+    model: MODEL,
+    max_tokens: 2000,
+    system: oneOffSystem(idea, tone, here, sets, cast),
+    output_config: { format: { type: 'json_schema', schema: ONE_OFF_SCHEMA } },
+    messages: [{ role: 'user', content: idea ? `Write the scene: ${idea}` : 'Surprise me. Write the scene.' }],
+  });
+
+  if (message.stop_reason === 'max_tokens') {
+    throw new Error('The scene ran long. Try again.');
+  }
+  const text = message.content.find((b) => b.type === 'text')?.text;
+  if (!text) throw new Error('The writers came back with nothing. Try again.');
+  return JSON.parse(text);
 }
 
 async function writeNext(show, episodes, sets, cast) {
@@ -136,9 +199,23 @@ export default async function handler(req, res) {
   const body = readBody(req);
   const action = String(body.action || '');
   if (!action) return json(res, 400, { error: 'An action is required.' });
-  if (!db.isConfigured()) return json(res, 500, { error: 'Supabase is not configured.' });
 
   try {
+    if (action === 'write_scene') {
+      // One-offs need the writer, not the database — nothing is saved.
+      if (!process.env.ANTHROPIC_API_KEY) {
+        return json(res, 500, { error: 'ANTHROPIC_API_KEY is not configured.' });
+      }
+      const here = clip(body.set, 80);
+      const sets = (Array.isArray(body.sets) ? body.sets : []).slice(0, 24).map((s) => clip(s, 80)).filter(Boolean);
+      const cast = (Array.isArray(body.cast) ? body.cast : []).slice(0, 24).map((c) => clip(c, 60)).filter(Boolean);
+      const tone = TONES[body.tone] ? body.tone : 'comedy';
+      const pitch = await writeOneOff(clip(body.idea, 500), tone, here, sets, cast);
+      return json(res, 200, { pitch });
+    }
+
+    if (!db.isConfigured()) return json(res, 500, { error: 'Supabase is not configured.' });
+
     if (action === 'create_show') {
       const title = clip(body.title, 80);
       if (!title) return json(res, 400, { error: 'A show needs a title.' });

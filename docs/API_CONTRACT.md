@@ -210,3 +210,11 @@ structured output `{recap, title, logline, beats:[{set, action}], cliffhanger}`
 from the show's premise, tone, prior episodes, and the caller-supplied `sets`
 and `cast` name lists. Backed by `bp_shows` and `bp_episodes` (same RLS
 pattern as the other tables).
+
+A fifth action, `write_scene`, serves one-off videos from inside the set
+viewer: `{action:'write_scene', idea?, tone?, set, sets, cast}` returns
+`{pitch: {title, logline, beats:[{set, action}], ender}}` — a self-contained
+sketch with a punchline instead of a cliffhanger. It touches no tables and is
+deliberately not gated on Supabase; only `ANTHROPIC_API_KEY` is required. The
+frontend keeps the last pitch per world in `localStorage` (`bp-pitch-<world_id>`)
+and each beat can be piped into `/api/direct` verbatim via its Stage button.

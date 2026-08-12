@@ -118,6 +118,9 @@ const r = await page.evaluate(() => {
     holdRowHidden: (document.getElementById('hold-row') || {}).hidden === true,
     handSelects: !!document.getElementById('give-select') && !!document.getElementById('throw-select'),
     throwWired: !!(document.getElementById('throw-select') || {}).onchange,
+    sceneStrip: !!document.getElementById('scene-strip'),
+    sceneClosed: !(document.getElementById('scene-strip') || { classList: { contains: () => true } }).classList.contains('on'),
+    sceneWriteWired: !!(document.getElementById('scene-write') || {}).onclick,
   };
 });
 
@@ -131,6 +134,7 @@ console.log('  look options    :', r.lookOptions, '(7 expected)');
 console.log('  look overlays   :', r.lookOverlays ? 'all present' : 'MISSING');
 console.log('  writers room    :', r.wrPresent ? 'present' : 'MISSING', '| form hidden:', r.wrFormHidden, '| look options:', r.wrLookOptions);
 console.log('  act/hand rows   :', r.actRowHidden && r.holdRowHidden ? 'present, hidden until selection' : 'WRONG', '| selects:', r.handSelects ? 'both' : 'MISSING', '| throw wired:', r.throwWired ? 'yes' : 'NO');
+console.log('  scene writer    :', r.sceneStrip ? 'strip present' : 'MISSING', '| closed at boot:', r.sceneClosed, '| Write wired:', r.sceneWriteWired ? 'yes' : 'NO');
 console.log('  onchange wired  :', r.handlerWired ? 'yes' : 'NO');
 console.log('  page errors     :', errors.length ? errors : 'none');
 console.log('  console errors  :', logs.length ? logs.slice(0,4) : 'none');
@@ -138,6 +142,7 @@ console.log('  console errors  :', logs.length ? logs.slice(0,4) : 'none');
 await browser.close(); srv.close();
 const ok = r.fxOptions === 27 && r.lookOptions === 7 && r.lookOverlays && r.wrPresent && r.wrFormHidden && r.wrLookOptions === 7 && r.fxSelect && r.burstBtn && r.handlerWired
   && r.actRowHidden && r.holdRowHidden && r.handSelects && r.throwWired
+  && r.sceneStrip && r.sceneClosed && r.sceneWriteWired
   && errors.length === 0 && r.castStrip && castOk;
 console.log(ok ? '\nPASS — page boots, effects UI builds, cast panel opens with 4 gated slots, no runtime errors' : '\nFAIL');
 process.exit(ok ? 0 : 1);
