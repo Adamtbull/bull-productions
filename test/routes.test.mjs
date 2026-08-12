@@ -22,7 +22,7 @@ for (const k of ['ANTHROPIC_API_KEY','TRIPO_API_KEY','WORLDLABS_API_KEY','SUPABA
 console.log('=== method guards (wrong verb must 405 + set Allow) ===');
 for (const [name, wrong] of [['generate','GET'],['operation','POST'],['worlds','POST'],
   ['props-generate','GET'],['props-task','POST'],['props-list','POST'],['props-proxy','POST'],
-  ['cast-generate','GET'],['cast-task','POST'],['cast-list','POST'],['direct','GET'],['scene','DELETE']]) {
+  ['cast-generate','GET'],['cast-task','POST'],['cast-list','POST'],['direct','GET'],['scene','DELETE'],['show','DELETE']]) {
   await check(`${name} rejects ${wrong}`, async () => {
     const h = await load(name); const [req, res] = mock(wrong); await h(req, res);
     eq(res.statusCode, 405, 'status');
@@ -39,6 +39,9 @@ const cases = [
   ['props-proxy','GET',{query:{}},'Asset URL'],
   ['direct','POST',{body:{}},'director'],
   ['scene','GET',{query:{}},'world_id'],
+  ['show','POST',{body:{}},'action'],
+  ['show','POST',{body:{action:'create_show'}},'title'],
+  ['show','POST',{body:{action:'write_next'}},'show_id'],
 ];
 // Configured, so validation is reached rather than the not-configured guard.
 const KEYS = {ANTHROPIC_API_KEY:'sk-test',TRIPO_API_KEY:'t',WORLDLABS_API_KEY:'w',
@@ -62,6 +65,19 @@ for (const [name, m] of [['generate','POST'],['direct','POST'],['props-task','GE
     if (!/not configured/i.test(parse(res).error || '')) throw new Error('unclear error text');
   });
 }
+
+console.log('\n=== writers room specifics ===');
+await check('show GET degrades to cloud:false', async () => {
+  const h = await load('show'); const [req, res] = mock('GET'); await h(req, res);
+  eq(res.statusCode, 200, 'status'); eq(parse(res).cloud, false, 'cloud');
+});
+await check('show POST 500s without Supabase', async () => {
+  const h = await load('show');
+  const [req, res] = mock('POST', { body: { action: 'create_show', title: 'Test' } });
+  await h(req, res);
+  eq(res.statusCode, 500, 'status');
+  if (!/not configured/i.test(parse(res).error || '')) throw new Error('unclear error');
+});
 
 console.log('\n=== unconfigured Supabase degrades, does not error ===');
 for (const name of ['props-list','cast-list']) {

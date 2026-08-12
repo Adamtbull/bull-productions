@@ -183,3 +183,18 @@ Response:
 
 Any value outside the listed sets falls back to the default rather than erroring, so
 a loose model response degrades gracefully instead of breaking the scene.
+
+---
+
+## Added after recovery
+
+### `POST /api/show` / `GET /api/show`
+
+Not part of the recovered contract — added 2026-08-12 for the writers' room.
+`GET` lists shows with their episodes (`{cloud, shows:[{...show, episodes}]}`).
+`POST` takes `{action}`: `create_show`, `save_episode`, `delete_show`, or
+`write_next`, which has `claude-sonnet-4-6` pitch the next episode as
+structured output `{recap, title, logline, beats:[{set, action}], cliffhanger}`
+from the show's premise, tone, prior episodes, and the caller-supplied `sets`
+and `cast` name lists. Backed by `bp_shows` and `bp_episodes` (same RLS
+pattern as the other tables).

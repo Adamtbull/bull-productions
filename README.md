@@ -11,7 +11,7 @@ Built mobile-first — the whole thing is meant to be used from a phone.
 
 ```
 index.html            the entire frontend, self-contained
-api/                  one file per route, 12 routes
+api/                  one file per route, 13 routes
 api/_lib/             shared helpers (http, supabase, tripo, worldlabs)
 test/                 route guards, effects engine, headless browser boot
 docs/                 API contract, recovery notes, multiview spec
@@ -47,6 +47,12 @@ via an importmap. It is served as-is.
   hand-wobbled frames a second, stop-motion style.
 - **Director** — type an instruction and Claude turns it into scheduled move,
   motion, appear, vanish and turn commands against the tagged items on set.
+- **The writers' room** — shows with continuing storylines. A show carries a
+  premise, a tone (comedy, action comedy, anime saga, clay deathmatch, sitcom,
+  drama) and a default look. "Write the next episode" has Claude read the whole
+  run so far plus the sets and cast that actually exist, and pitch a recap,
+  staged beats and a cliffhanger; keep it and the storyline continues from
+  there next time. Opening a show applies its look to the whole app.
 - **Walk camera** — thumb stick to move, one-finger drag to look, ground-snapped
   and wall-blocked. Installs to the Home Screen and clears Safari's bars.
 
@@ -81,7 +87,7 @@ call from the frontend is a same-origin relative path.
 | `WORLDLABS_API_KEY` | `generate`, `operation`, `worlds` |
 | `TRIPO_API_KEY` | `props-*`, `cast-*` |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `props-list`, `cast-list`, `scene`, asset persistence |
-| `ANTHROPIC_API_KEY` | `direct` |
+| `ANTHROPIC_API_KEY` | `direct`, `show` (writers' room) |
 
 Supabase holds `bp_props`, `bp_scenes` and `bp_cast` plus the public `bull-props`
 storage bucket. With Supabase unconfigured the libraries degrade to device-local

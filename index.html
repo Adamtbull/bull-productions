@@ -273,6 +273,50 @@
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
     .empty-note { color: var(--dust); font-size: 14px; }
+    /* Writers' room */
+    .wr-row { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
+    .wr-row .btn { flex: none; }
+    .wr-row select { flex: 1; }
+    #show-form input[type="text"] {
+      width: 100%; margin-top: 10px; padding: 10px 12px;
+      background: var(--stage-2); border: 1px solid var(--line); border-radius: var(--radius);
+      color: var(--chalk); font-size: 16px;
+    }
+    .show-card {
+      display: flex; justify-content: space-between; align-items: center; gap: 10px;
+      width: 100%; text-align: left; padding: 12px; margin-top: 8px;
+      background: var(--stage-2); border: 1px solid var(--line); border-radius: var(--radius);
+      color: var(--chalk); font-size: 15px; cursor: pointer;
+    }
+    .show-card .sc-eps {
+      font-family: "Space Mono", monospace; font-size: 11px; color: var(--dust);
+      letter-spacing: 0.08em; text-transform: uppercase; flex: none;
+    }
+    .wr-premise { color: var(--dust); font-size: 13px; margin-top: 4px; }
+    .ep-card {
+      margin-top: 8px; padding: 10px 12px;
+      background: var(--stage-2); border-left: 2px solid var(--tungsten);
+      border-radius: 0 var(--radius) var(--radius) 0;
+    }
+    .ep-card h5 { font-size: 14px; margin-bottom: 2px; }
+    .ep-card .ep-log { color: var(--dust); font-size: 13px; }
+    .ep-card .ep-more { display: none; margin-top: 6px; font-size: 13px; }
+    .ep-card.open .ep-more { display: block; }
+    .wr-recap {
+      font-family: "Space Mono", monospace; font-size: 11px; color: var(--dust);
+      letter-spacing: 0.08em; text-transform: uppercase; margin-top: 12px;
+    }
+    #ep-pitch { border-top: 1px dashed var(--line); margin-top: 12px; padding-top: 8px; }
+    #ep-pitch h4 { margin-top: 6px; }
+    #ep-pitch ol { margin: 8px 0 0 18px; font-size: 14px; }
+    #ep-pitch ol li { margin-top: 6px; }
+    #ep-pitch .beat-set {
+      font-family: "Space Mono", monospace; font-size: 10px; color: var(--tungsten);
+      letter-spacing: 0.08em; text-transform: uppercase; display: block;
+    }
+    .wr-cliff { color: var(--tungsten); font-style: italic; margin-top: 10px; }
+    .wr-status { color: var(--dust); font-size: 13px; margin-top: 8px; }
+    #show-detail h3 { margin-top: 10px; }
 
     /* ---- Viewer overlay ---- */
     #viewer {
@@ -551,6 +595,62 @@
       <h2>The backlot</h2>
       <div class="backlot-grid" id="backlot"></div>
       <p class="empty-note" id="backlot-empty">No sets yet. Build your first one above.</p>
+    </section>
+
+    <section class="card" id="writers-room">
+      <h2>The writers&rsquo; room</h2>
+
+      <div id="show-home">
+        <div id="show-list"></div>
+        <p class="empty-note" id="shows-empty">No shows yet. Start one and the writers&rsquo; room pitches you episode one.</p>
+        <div class="wr-row">
+          <button class="btn" id="show-new-btn" type="button">+ New show</button>
+        </div>
+        <form id="show-form" hidden>
+          <input type="text" id="show-title" placeholder="Show title" maxlength="80" autocomplete="off" />
+          <textarea id="show-premise" placeholder="Premise &mdash; who is in it, what is it about, what keeps going wrong"></textarea>
+          <div class="wr-row">
+            <select id="show-tone" aria-label="Tone">
+              <option value="comedy">Comedy</option>
+              <option value="action-comedy">Action comedy</option>
+              <option value="anime saga">Anime saga</option>
+              <option value="clay deathmatch">Clay deathmatch</option>
+              <option value="sitcom">Sitcom</option>
+              <option value="drama">Drama</option>
+            </select>
+            <select id="show-look" aria-label="Show look"></select>
+          </div>
+          <div class="wr-row">
+            <button class="btn small ghost" type="button" id="show-cancel">Cancel</button>
+            <button class="btn small" type="submit">Create show</button>
+          </div>
+        </form>
+      </div>
+
+      <div id="show-detail" hidden>
+        <button class="btn small ghost" id="show-back" type="button">&larr; All shows</button>
+        <h3 id="sd-title"></h3>
+        <p class="wr-premise" id="sd-premise"></p>
+        <div id="sd-episodes"></div>
+        <div class="wr-row">
+          <button class="btn" id="ep-write" type="button">Write the next episode</button>
+        </div>
+        <div id="ep-pitch" hidden>
+          <div class="wr-recap" id="ep-recap"></div>
+          <h4 id="ep-title"></h4>
+          <p class="wr-premise" id="ep-logline"></p>
+          <ol id="ep-beats"></ol>
+          <p class="wr-cliff" id="ep-cliff"></p>
+          <div class="wr-row">
+            <button class="btn small ghost" id="ep-again" type="button">Another take</button>
+            <button class="btn small" id="ep-keep" type="button">Keep it</button>
+          </div>
+        </div>
+        <div class="wr-row">
+          <button class="btn small ghost" id="show-delete" type="button">Delete show</button>
+        </div>
+      </div>
+      <p class="wr-status" id="wr-status" hidden></p>
     </section>
 
     <footer>Generation billed by World Labs &middot; walking around is free</footer>
@@ -883,6 +983,265 @@
       }
     }
     loadBacklot();
+
+    // ---------- The writers' room ----------
+    // Shows hold a premise, a tone and a default look. Each "Write the next
+    // episode" sends the run so far plus whatever sets and cast actually exist,
+    // and the writer answers with a recap, staged beats and a cliffhanger.
+    const showHome = document.getElementById("show-home");
+    const showListEl = document.getElementById("show-list");
+    const showsEmpty = document.getElementById("shows-empty");
+    const showNewBtn = document.getElementById("show-new-btn");
+    const showFormEl = document.getElementById("show-form");
+    const showTitleIn = document.getElementById("show-title");
+    const showPremiseIn = document.getElementById("show-premise");
+    const showToneIn = document.getElementById("show-tone");
+    const showLookIn = document.getElementById("show-look");
+    const showCancelBtn = document.getElementById("show-cancel");
+    const showDetailEl = document.getElementById("show-detail");
+    const showBackBtn = document.getElementById("show-back");
+    const sdTitle = document.getElementById("sd-title");
+    const sdPremise = document.getElementById("sd-premise");
+    const sdEpisodes = document.getElementById("sd-episodes");
+    const epWriteBtn = document.getElementById("ep-write");
+    const wrStatus = document.getElementById("wr-status");
+    const epPitchEl = document.getElementById("ep-pitch");
+    const epRecap = document.getElementById("ep-recap");
+    const epTitle = document.getElementById("ep-title");
+    const epLogline = document.getElementById("ep-logline");
+    const epBeats = document.getElementById("ep-beats");
+    const epCliff = document.getElementById("ep-cliff");
+    const epAgainBtn = document.getElementById("ep-again");
+    const epKeepBtn = document.getElementById("ep-keep");
+    const showDeleteBtn = document.getElementById("show-delete");
+
+    let wrShows = [];
+    let wrCurrent = null;
+    let wrPitch = null;
+    let wrBusy = false;
+
+    function wrSay(msg) {
+      wrStatus.hidden = !msg;
+      wrStatus.textContent = msg || "";
+    }
+
+    function renderShows() {
+      showListEl.innerHTML = "";
+      showsEmpty.style.display = wrShows.length ? "none" : "";
+      for (const show of wrShows) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "show-card";
+        const n = show.episodes.length;
+        b.innerHTML = `<span></span><span class="sc-eps">${n} episode${n === 1 ? "" : "s"}</span>`;
+        b.firstChild.textContent = show.title;
+        b.onclick = () => openShow(show.id);
+        showListEl.appendChild(b);
+      }
+    }
+
+    function renderEpisodes() {
+      sdEpisodes.innerHTML = "";
+      for (const e of wrCurrent.episodes) {
+        const d = document.createElement("div");
+        d.className = "ep-card";
+        const h = document.createElement("h5");
+        h.textContent = `E${e.number} — ${e.title}`;
+        const log = document.createElement("div");
+        log.className = "ep-log";
+        log.textContent = e.logline || "";
+        const more = document.createElement("div");
+        more.className = "ep-more";
+        more.textContent = e.synopsis + (e.cliffhanger ? `
+Cliffhanger: ${e.cliffhanger}` : "");
+        more.style.whiteSpace = "pre-line";
+        d.append(h, log, more);
+        d.onclick = () => d.classList.toggle("open");
+        sdEpisodes.appendChild(d);
+      }
+      epWriteBtn.textContent = wrCurrent.episodes.length
+        ? "Write the next episode"
+        : "Write the pilot";
+    }
+
+    function openShow(id) {
+      wrCurrent = wrShows.find((s) => s.id === id) || null;
+      if (!wrCurrent) return;
+      wrPitch = null;
+      epPitchEl.hidden = true;
+      wrSay("");
+      sdTitle.textContent = wrCurrent.title;
+      sdPremise.textContent = wrCurrent.premise || "";
+      renderEpisodes();
+      showHome.hidden = true;
+      showDetailEl.hidden = false;
+      // A show carries its look: open the show, the whole app wears it.
+      if (typeof applyLook === "function" && wrCurrent.look) applyLook(wrCurrent.look);
+    }
+
+    function closeShow() {
+      wrCurrent = null;
+      showDetailEl.hidden = true;
+      showHome.hidden = false;
+      renderShows();
+    }
+    showBackBtn.onclick = closeShow;
+
+    async function loadShows() {
+      try {
+        const r = await fetch("/api/show");
+        const d = await r.json();
+        if (r.ok && d.cloud) {
+          wrShows = d.shows || [];
+          renderShows();
+        }
+      } catch {}
+    }
+    loadShows();
+
+    showNewBtn.onclick = () => {
+      showFormEl.hidden = false;
+      showNewBtn.hidden = true;
+      showTitleIn.focus();
+    };
+    showCancelBtn.onclick = () => {
+      showFormEl.hidden = true;
+      showNewBtn.hidden = false;
+    };
+
+    showFormEl.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const title = showTitleIn.value.trim();
+      if (!title || wrBusy) return;
+      wrBusy = true;
+      try {
+        const r = await fetch("/api/show", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "create_show",
+            title,
+            premise: showPremiseIn.value.trim(),
+            tone: showToneIn.value,
+            look: showLookIn.value,
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `Creating the show failed (${r.status}).`);
+        wrShows.unshift(d.show);
+        showTitleIn.value = "";
+        showPremiseIn.value = "";
+        showFormEl.hidden = true;
+        showNewBtn.hidden = false;
+        openShow(d.show.id);
+      } catch (err) {
+        wrSay(err.message || "Creating the show failed.");
+      }
+      wrBusy = false;
+    };
+
+    function renderPitch() {
+      epRecap.textContent = wrPitch.recap || "";
+      epRecap.style.display = wrPitch.recap ? "" : "none";
+      epTitle.textContent = wrPitch.title;
+      epLogline.textContent = wrPitch.logline;
+      epBeats.innerHTML = "";
+      for (const beat of wrPitch.beats || []) {
+        const li = document.createElement("li");
+        const set = document.createElement("span");
+        set.className = "beat-set";
+        set.textContent = beat.set;
+        li.appendChild(set);
+        li.appendChild(document.createTextNode(beat.action));
+        epBeats.appendChild(li);
+      }
+      epCliff.textContent = wrPitch.cliffhanger ? `Cliffhanger: ${wrPitch.cliffhanger}` : "";
+      epPitchEl.hidden = false;
+    }
+
+    async function writeNext() {
+      if (!wrCurrent || wrBusy) return;
+      wrBusy = true;
+      epWriteBtn.disabled = true;
+      epAgainBtn.disabled = true;
+      epPitchEl.hidden = true;
+      wrSay("The writers\u2019 room is arguing about it\u2026");
+      try {
+        const sets = [...document.querySelectorAll("#backlot .set-name")]
+          .map((el) => el.textContent.trim()).filter(Boolean).slice(0, 24);
+        const cast = [...cloudCast.values()].map((c) => c.name).filter(Boolean).slice(0, 24);
+        const r = await fetch("/api/show", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "write_next", show_id: wrCurrent.id, sets, cast }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `The pitch failed (${r.status}).`);
+        wrPitch = d.pitch;
+        wrSay("");
+        renderPitch();
+      } catch (err) {
+        wrSay(err.message || "The pitch failed.");
+      }
+      wrBusy = false;
+      epWriteBtn.disabled = false;
+      epAgainBtn.disabled = false;
+    }
+    epWriteBtn.onclick = writeNext;
+    epAgainBtn.onclick = writeNext;
+
+    epKeepBtn.onclick = async () => {
+      if (!wrCurrent || !wrPitch || wrBusy) return;
+      wrBusy = true;
+      epKeepBtn.disabled = true;
+      try {
+        const beatText = (wrPitch.beats || [])
+          .map((b, i) => `${i + 1}. [${b.set}] ${b.action}`).join("\n");
+        const r = await fetch("/api/show", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "save_episode",
+            show_id: wrCurrent.id,
+            title: wrPitch.title,
+            logline: wrPitch.logline,
+            synopsis: (wrPitch.recap ? wrPitch.recap + "\n\n" : "") + beatText,
+            cliffhanger: wrPitch.cliffhanger,
+          }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `Saving the episode failed (${r.status}).`);
+        wrCurrent.episodes.push(d.episode);
+        wrPitch = null;
+        epPitchEl.hidden = true;
+        renderEpisodes();
+        wrSay(`Episode ${d.episode.number} is on the board.`);
+      } catch (err) {
+        wrSay(err.message || "Saving the episode failed.");
+      }
+      wrBusy = false;
+      epKeepBtn.disabled = false;
+    };
+
+    showDeleteBtn.onclick = async () => {
+      if (!wrCurrent || wrBusy) return;
+      if (!window.confirm(`Delete "${wrCurrent.title}" and all its episodes?`)) return;
+      wrBusy = true;
+      try {
+        const r = await fetch("/api/show", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "delete_show", show_id: wrCurrent.id }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.error || `Deleting failed (${r.status}).`);
+        wrShows = wrShows.filter((s) => s.id !== wrCurrent.id);
+        closeShow();
+      } catch (err) {
+        wrSay(err.message || "Deleting failed.");
+      }
+      wrBusy = false;
+    };
 
     // ---------- Viewer ----------
     import * as THREE from "three";
@@ -2920,11 +3279,13 @@
 
     lookSelect.onchange = () => applyLook(lookSelect.value);
     (function initLooks() {
+      const showLook = document.getElementById("show-look");
       for (const [id, l] of Object.entries(LOOKS)) {
         const o = document.createElement("option");
         o.value = id;
         o.textContent = l.label;
         lookSelect.appendChild(o);
+        if (showLook) showLook.appendChild(o.cloneNode(true));
       }
       let saved = "off";
       try { saved = localStorage.getItem("bp-look") || "off"; } catch {}

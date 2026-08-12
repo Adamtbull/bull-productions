@@ -50,6 +50,18 @@ export async function insert(table, row, { upsert = false } = {}) {
   return Array.isArray(data) ? data[0] : (data || row);
 }
 
+export async function remove(table, query) {
+  const { url } = requireConfig();
+  const r = await fetch(`${url}/rest/v1/${table}?${query}`, {
+    method: 'DELETE',
+    headers: headers(),
+  });
+  if (!r.ok) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(d?.message || `Supabase delete failed (${r.status}).`);
+  }
+}
+
 // Uploads to the public `bull-props` bucket and returns the public URL.
 export async function upload(path, bytes, contentType) {
   const { url } = requireConfig();
