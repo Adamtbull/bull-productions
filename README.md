@@ -76,6 +76,13 @@ via an importmap. It is served as-is.
   surprise you, and the active look sets the tone. Every beat has a Stage
   button that hands it to the Director. The last scene per set is remembered;
   tap Write with an empty box to bring it back.
+- **Ground contact** — cast stand on the floor they're on, without per-model
+  offsets. The current skinned pose's true lowest point is measured (not the
+  bind-pose box), cached per animation clip, and applied as a render-time lift
+  over the collider-detected ground; scale and rotation stay planted for free,
+  Director moves follow ramps and platforms, and a fallen character settles on
+  the floor. `#grounddebug` on the URL shows the working for any selected
+  character. See `docs/GROUNDING.md`.
 - **Walk camera** — thumb stick to move, one-finger drag to look, ground-snapped
   and wall-blocked. Installs to the Home Screen and clears Safari's bars.
 

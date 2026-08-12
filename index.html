@@ -2139,6 +2139,13 @@ Cliffhanger: ${e.cliffhanger}` : "");
         holder.userData.mixer = mixer;
         holder.userData.acts = acts;
         holder.userData.actName = first;
+        // Pose the skeleton into the clip's first frame, then let grounding
+        // measure the real skinned silhouette rather than the bind pose.
+        mixer.update(0);
+        if (isCast) {
+          initGrounding(holder);
+          scheduleGroundMeasure(holder, 0.5); // once textures and fade settle
+        }
       }
       holder.userData.mats = [];
       obj.traverse((o) => {
@@ -2203,6 +2210,14 @@ Cliffhanger: ${e.cliffhanger}` : "");
         h.userData.actTimer = { t: 0, dur: holdFor, then: "idle" };
       }
       next.fadeIn(0.2).play();
+      // Grounding: land on this clip's cached contact at once, then true it
+      // up after the crossfade; fall re-measures again once it clamps into
+      // the lying pose so the body settles ON the floor, not through it.
+      if (h.userData.ground) {
+        groundUseCached(h, name);
+        scheduleGroundMeasure(h, 0.35);
+        if (name === "fall") scheduleGroundMeasure(h, next.getClip().duration + 0.25);
+      }
       return true;
     }
 
@@ -2303,6 +2318,198 @@ Cliffhanger: ${e.cliffhanger}` : "");
     }
     const handPos = new THREE.Vector3();
 
+    // ---------- Grounding ----------
+    // Feet-on-floor, without per-model hacks. The load-time Box3 normalisation
+    // is bind-pose only: the moment a Tripo clip poses the skeleton, the
+    // visible lowest point moves, and a static offset leaves feet in the
+    // floor. So each cast holder carries a grounding record: the current
+    // pose's true lowest point is measured from the SKINNED vertices (not the
+    // bind pose), cached per clip, and applied as one additive render-time
+    // lift so the sole rests exactly on the detected ground plus a whisker of
+    // clearance. item.y stays "ground height at the item" — the lift never
+    // leaks into saves, drags, motions or animations.
+    //
+    // Measures are event-driven, never per-frame: on load, on act change
+    // (after the crossfade settles), and when fall clamps into its lying
+    // pose. Scale needs no re-measure (the cached value is holder-local, so
+    // the lift just multiplies by item.scale), and turning is Y-invariant.
+    const GROUND_CLEARANCE = 0.003; // metres — sole clearance, stops z-fighting
+    const GROUND_SAMPLES = 480;     // vertex samples per mesh per measure
+
+    function getGroundHeightAt(x, z, fromY) {
+      if (colliderReady && colliderRoot) {
+        const from = new THREE.Vector3(x, (typeof fromY === "number" ? fromY : 2) + 2.5, z);
+        const down = new THREE.Raycaster(from, new THREE.Vector3(0, -1, 0), 0.05, 24);
+        for (const hit of down.intersectObject(colliderRoot, true)) {
+          let up = 1;
+          if (hit.face) up = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).y;
+          if (up > 0.45) return { y: hit.point.y, hit: true };
+        }
+      }
+      return { y: floorY, hit: false };
+    }
+
+    // Tripo rigs have no standard bone names, but imported rigs might — when a
+    // skeleton carries recognisable foot bones, contact tracks them instead of
+    // the whole silhouette, so a coat or a raised arm can't fake the floor.
+    function footBonesOf(h) {
+      const feet = [];
+      h.traverse((o) => {
+        if (o.isBone && /foot|ankle|toe/i.test(o.name || "")) feet.push(o);
+      });
+      return feet;
+    }
+
+    const _gv = new THREE.Vector3();
+    // Lowest visible point of the character in holder-local Y, at the pose it
+    // is actually in right now. Skinned meshes are sampled through
+    // getVertexPosition, which applies the current bone transforms.
+    function measureContactLocalY(h) {
+      h.updateWorldMatrix(true, true);
+      let min = Infinity;
+      let sampled = false;
+      h.traverse((o) => {
+        if (!o.isMesh || !o.geometry || !o.geometry.attributes || !o.geometry.attributes.position) return;
+        const pos = o.geometry.attributes.position;
+        if (o.isSkinnedMesh && typeof o.getVertexPosition === "function") {
+          const stride = Math.max(1, Math.floor(pos.count / GROUND_SAMPLES));
+          for (let i = 0; i < pos.count; i += stride) {
+            o.getVertexPosition(i, _gv);
+            o.localToWorld(_gv);
+            h.worldToLocal(_gv);
+            if (_gv.y < min) min = _gv.y;
+          }
+          sampled = true;
+        }
+      });
+      if (!sampled) {
+        // Rigid or unsupported meshes: static bounds are exact enough.
+        const box = new THREE.Box3().setFromObject(h);
+        h.getWorldPosition(_gv);
+        return { minLocal: box.min.y - _gv.y, mode: "static" };
+      }
+      const g = h.userData.ground;
+      const feet = g && g.footBones;
+      if (feet && feet.length >= 2) {
+        let feetMin = Infinity;
+        for (const b of feet) {
+          b.getWorldPosition(_gv);
+          h.worldToLocal(_gv);
+          if (_gv.y < feetMin) feetMin = _gv.y;
+        }
+        // soleDrop (ankle height above the sole) calibrates on first measure.
+        if (g.soleDrop === null) g.soleDrop = Math.max(0, feetMin - min);
+        return { minLocal: feetMin - g.soleDrop, mode: "feet" };
+      }
+      return { minLocal: min, mode: "bounds" };
+    }
+
+    function initGrounding(h) {
+      const feet = footBonesOf(h);
+      h.userData.ground = {
+        enabled: true,
+        state: "grounded",            // grounded | falling | airborne (hover)
+        clearance: GROUND_CLEARANCE,
+        footBones: feet.length >= 2 ? feet : null,
+        soleDrop: null,
+        contactByClip: {},            // act name -> holder-local bottom Y
+        contactLocalY: 0,
+        mode: "auto",
+        lift: 0,
+        seeded: false,
+        clock: 0,
+        measureTimes: [0],            // measure immediately on first frame
+      };
+    }
+
+    function scheduleGroundMeasure(h, delay) {
+      const g = h.userData.ground;
+      if (!g) return;
+      if (g.measureTimes.length < 4) g.measureTimes.push(g.clock + (delay || 0));
+    }
+
+    function groundLiftTarget(h) {
+      const g = h.userData.ground;
+      if (!g || !g.enabled) return 0;
+      const s = (h.userData.item && h.userData.item.scale) || 1;
+      return g.clearance - g.contactLocalY * s;
+    }
+
+    function groundMeasure(h) {
+      const g = h.userData.ground;
+      if (!g) return;
+      const m = measureContactLocalY(h);
+      // A contact wildly far from the origin means a malformed pivot — clamp
+      // so one bad export can't launch or bury the character, and say so.
+      if (!isFinite(m.minLocal) || Math.abs(m.minLocal) > 3) {
+        console.warn("grounding: implausible contact", m.minLocal, "on", h.userData.item?.name, "— clamped. Malformed pivot?");
+        m.minLocal = Math.max(-3, Math.min(3, isFinite(m.minLocal) ? m.minLocal : 0));
+        m.mode += "-clamped";
+      }
+      g.contactLocalY = m.minLocal;
+      g.mode = m.mode;
+      g.contactByClip[h.userData.actName || "idle"] = m.minLocal;
+      if (!g.seeded) { g.lift = groundLiftTarget(h); g.seeded = true; }
+      if (groundDebugOn) groundDebugReport(h, m);
+    }
+
+    // Switching back to a clip that has been measured before lands instantly
+    // from cache; the scheduled re-measure then trues it up.
+    function groundUseCached(h, actName) {
+      const g = h.userData.ground;
+      if (!g) return;
+      if (actName in g.contactByClip) g.contactLocalY = g.contactByClip[actName];
+    }
+
+    // --- debug: #grounddebug in the URL, or window.bpGround.debug(true) ---
+    let groundDebugOn = false;
+    function setGroundingDebugVisible(on) {
+      groundDebugOn = !!on;
+      if (!on && placedGroup) {
+        for (const h of placedGroup.children) {
+          const g = h.userData.ground;
+          if (g && g.debugObjs) {
+            for (const o of g.debugObjs) { if (o.parent) o.parent.remove(o); }
+            g.debugObjs = null;
+          }
+        }
+      }
+    }
+    function groundDebugLine(name, rootY, minLocalWorld, floorAt, lift, mode) {
+      return `${name} · root ${rootY.toFixed(3)} · bottom ${minLocalWorld.toFixed(3)} · floor ${floorAt.toFixed(3)} · fix ${lift >= 0 ? "+" : ""}${lift.toFixed(3)} · ${mode}`;
+    }
+    function groundDebugReport(h, m) {
+      const it = h.userData.item || {};
+      const g = h.userData.ground;
+      const floorAt = getGroundHeightAt(it.x || 0, it.z || 0, it.y || 0);
+      const lift = groundLiftTarget(h);
+      const s = it.scale || 1;
+      console.log(
+        `GROUNDING DEBUG\nActor: ${it.name || "?"}\nRoot Y: ${(it.y || 0).toFixed(3)}\n` +
+        `Bounds Min Y: ${(m.minLocal * s).toFixed(3)}\nFloor Y: ${floorAt.y.toFixed(3)} (${floorAt.hit ? "collider" : "slider"})\n` +
+        `Correction: ${lift >= 0 ? "+" : ""}${lift.toFixed(3)}\n` +
+        `Final Bounds Min Y: ${(m.minLocal * s + lift).toFixed(3)}\nMode: ${m.mode} · state ${g.state}`);
+      if (selected && selected.holder === h) {
+        hintEl.textContent = groundDebugLine(it.name || "?", it.y || 0, m.minLocal * s, floorAt.y, lift, m.mode);
+      }
+      if (scene3) {
+        if (g.debugObjs) for (const o of g.debugObjs) { if (o.parent) o.parent.remove(o); }
+        const box = new THREE.BoxHelper(h, 0x27c46b);
+        const dot = new THREE.Mesh(
+          new THREE.SphereGeometry(0.03, 8, 8),
+          new THREE.MeshBasicMaterial({ color: 0x27c46b, depthTest: false }));
+        dot.position.set(it.x || 0, (it.y || 0) + g.clearance, it.z || 0);
+        scene3.add(box); scene3.add(dot);
+        g.debugObjs = [box, dot];
+      }
+    }
+    window.bpGround = {
+      debug: setGroundingDebugVisible,
+      remeasure() { if (placedGroup) for (const h of placedGroup.children) if (h.userData.ground) groundMeasure(h); },
+    };
+    if (location.hash.includes("grounddebug")) groundDebugOn = true;
+    // ---------- Grounding end ----------
+
     // Motion behaviours and entrances, every frame
     function updateProps(dt) {
       if (!placedGroup) return;
@@ -2318,6 +2525,17 @@ Cliffhanger: ${e.cliffhanger}` : "");
         const it = h.userData.item;
         if (!it) continue;
 
+        const g = h.userData.ground;
+        if (g) {
+          g.clock += dt;
+          while (g.measureTimes.length && g.clock >= g.measureTimes[0]) {
+            g.measureTimes.shift();
+            groundMeasure(h);
+          }
+          g.state = it.motion === "hover" ? "airborne"
+            : (h.userData.actName === "fall" ? "falling" : "grounded");
+        }
+
         const mv = h.userData.move;
         if (mv) {
           mv.t += dt;
@@ -2327,6 +2545,12 @@ Cliffhanger: ${e.cliffhanger}` : "");
             it.x = mv.fromX + (mv.toX - mv.fromX) * e;
             it.y = mv.fromY + (mv.toY - mv.fromY) * e;
             it.z = mv.fromZ + (mv.toZ - mv.fromZ) * e;
+            // Walking cast hug the real surface between endpoints, so a ramp
+            // or platform mid-route is climbed rather than cut through.
+            if (g && g.state !== "airborne") {
+              const gh = getGroundHeightAt(it.x, it.z, Math.max(mv.fromY, mv.toY));
+              if (gh.hit) it.y = gh.y;
+            }
             if (p >= 1) {
               h.userData.move = null;
               if (mv.acted && h.userData.acts) setAct(h, "idle");
@@ -2398,6 +2622,13 @@ Cliffhanger: ${e.cliffhanger}` : "");
             z = it.z + Math.sin(t) * 0.5;
             rotY = (it.rotY || 0) - t;
             break;
+        }
+
+        // Grounding lift: measured sole-to-origin correction for the current
+        // pose, scale-aware every frame, eased so clip changes don't pop.
+        if (g && g.enabled) {
+          g.lift += (groundLiftTarget(h) - g.lift) * Math.min(1, dt * 8);
+          y += g.lift;
         }
 
         const a = h.userData.anim;
@@ -2976,11 +3207,26 @@ Cliffhanger: ${e.cliffhanger}` : "");
       }
 
       colliderRoot = root;
+      // The one and only walkable-ground collection: grounding rays intersect
+      // this subtree exclusively, so characters, props and helpers can never
+      // be mistaken for floor.
+      root.userData.isGround = true;
       colliderReady = true;
       floorY = found;
       floorRange.value = String(Math.max(-3, Math.min(0.5, floorY)));
       if (gridHelper) gridHelper.position.y = floorY;
       updateFloorBtn();
+      // The ground under existing items just changed from the flat plane to
+      // the real surface — re-seat grounded cast on it and re-measure.
+      if (placedGroup) {
+        for (const h of placedGroup.children) {
+          const it = h.userData.item;
+          if (!it || it.kind !== "cast" || it.motion === "hover") continue;
+          const gh = getGroundHeightAt(it.x, it.z, it.y + 1);
+          if (gh.hit) it.y = gh.y;
+          scheduleGroundMeasure(h, 0.1);
+        }
+      }
       if (mode === "dress" && !selected) {
         hintEl.textContent = armedPropId
           ? "Tap a surface, or use Place here"

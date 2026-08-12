@@ -11,6 +11,6 @@
     "@anthropic-ai/sdk": "^0.116.0"
   },
   "scripts": {
-    "test": "node test/routes.test.mjs && node test/fx.test.mjs"
+    "test": "node test/routes.test.mjs && node test/fx.test.mjs && node test/grounding.test.mjs"
   }
 }
