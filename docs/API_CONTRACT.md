@@ -86,6 +86,19 @@ Response: `{ "cloud": true, "props": [ { "id", "name", "glb_url", "preview_url" 
 
 The frontend ignores the payload entirely unless `cloud` is `true`.
 
+### `DELETE /api/library?kind=props|cast&id=<id>`
+Added 2026-08-12. Removes the stored `.glb` and `.jpg` and then the table row —
+assets first, because a leftover row is visible and re-deletable while an
+orphaned file in storage is invisible and pays rent forever. A missing object is
+not an error. `id` must match `^(prop|cast)_[a-z0-9-]{6,64}$`, since it is
+interpolated into a storage path. Response `{ "cloud": true, "deleted": "<id>" }`,
+or `{ "cloud": false, "deleted": "<id>" }` when Supabase is unconfigured.
+
+Called directly rather than through a rewrite alias. The frontend deletes
+locally first and unconditionally (placed copies on the set, the IndexedDB
+cache, the in-memory maps), so a failed server call still leaves the device
+clean and the next library load honestly restores anything still on the server.
+
 ### `GET /api/props-proxy?u=<encoded_url>`
 Byte relay, used only as a fallback after a direct asset fetch fails (CORS or expiry).
 Returns the asset body on success. On failure returns JSON `{ "error": "..." }`;

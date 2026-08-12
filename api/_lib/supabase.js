@@ -62,6 +62,20 @@ export async function remove(table, query) {
   }
 }
 
+// Deletes one stored object. A missing object is not an error — the caller
+// wants it gone, and it already is.
+export async function removeObject(path) {
+  const { url } = requireConfig();
+  const r = await fetch(`${url}/storage/v1/object/${BUCKET}/${encodeURIComponent(path)}`, {
+    method: 'DELETE',
+    headers: headers(),
+  });
+  if (!r.ok && r.status !== 404) {
+    const d = await r.json().catch(() => ({}));
+    throw new Error(d.message || d.error || `Supabase asset delete failed (${r.status}).`);
+  }
+}
+
 // Uploads to the public `bull-props` bucket and returns the public URL.
 export async function upload(path, bytes, contentType) {
   const { url } = requireConfig();

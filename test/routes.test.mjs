@@ -144,6 +144,41 @@ await check('a failed clean-up per photo falls back to that photo, not an error'
   if (!/catch \(error\)[\s\S]{0,260}return src/.test(castGenSrc)) throw new Error('per-photo failure does not fall back to the original');
 });
 
+console.log('\n=== deleting from the library ===');
+await check('DELETE still requires a kind', async () => {
+  const h = await load('library'); const [req, res] = mock('DELETE', { query: { id: 'cast_abc123' } });
+  await h(req, res);
+  eq(res.statusCode, 400, 'status');
+  if (!/kind/i.test(parse(res).error || '')) throw new Error('unclear error');
+});
+await check('DELETE requires an id', async () => {
+  const h = await load('library'); const [req, res] = mock('DELETE', { query: { kind: 'cast' } });
+  await h(req, res);
+  eq(res.statusCode, 400, 'status');
+  if (!/id/i.test(parse(res).error || '')) throw new Error('unclear error');
+});
+// The id becomes a storage path, so anything that is not a server-minted id
+// must be refused before it can reach out of the bucket.
+for (const bad of ['../secrets', 'cast_../../etc', 'nope_abc123', 'cast_$(x)', 'cast_ab']) {
+  await check(`DELETE refuses the id ${JSON.stringify(bad)}`, async () => {
+    const h = await load('library'); const [req, res] = mock('DELETE', { query: { kind: 'cast', id: bad } });
+    await h(req, res);
+    eq(res.statusCode, 400, 'status');
+  });
+}
+await check('DELETE accepts a real id and degrades without Supabase', async () => {
+  const h = await load('library');
+  const [req, res] = mock('DELETE', { query: { kind: 'cast', id: 'cast_5e34ce67-9a66-423e-9ee6-ce26a074a18f' } });
+  await h(req, res);
+  eq(res.statusCode, 200, 'status');
+  eq(parse(res).cloud, false, 'cloud');
+});
+await check('library still refuses verbs it does not serve', async () => {
+  const h = await load('library'); const [req, res] = mock('PUT', { query: { kind: 'cast' } });
+  await h(req, res);
+  eq(res.statusCode, 405, 'status');
+});
+
 console.log('\n=== cast build quality + unverified-parameter fallback ===');
 const tripo = await import(`${dir}/_lib/tripo.js`);
 const CAST_ENV = ['TRIPO_CAST_FACE_LIMIT','TRIPO_CAST_TEXTURE_QUALITY','TRIPO_CAST_QUAD','TRIPO_CAST_MODEL_VERSION'];

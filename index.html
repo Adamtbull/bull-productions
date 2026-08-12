@@ -410,6 +410,16 @@
       font-size: 10px; margin-top: 3px;
       overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     }
+    .prop-chip { position: relative; }
+    .pc-del {
+      position: absolute; top: -6px; right: -6px;
+      min-width: 22px; height: 22px; padding: 0 5px;
+      display: flex; align-items: center; justify-content: center;
+      border-radius: 11px; border: 1px solid var(--line);
+      background: rgba(10, 12, 16, 0.92); color: var(--dust);
+      font-family: "Space Mono", monospace; font-size: 11px; line-height: 1;
+    }
+    .pc-del.arm { background: var(--rec); border-color: var(--rec); color: #fff; width: auto; }
     #place-here {
       width: 100%; margin-top: 8px; padding: 12px;
       background: var(--tungsten); border-color: var(--tungsten-deep);
@@ -1556,6 +1566,15 @@ Cliffhanger: ${e.cliffhanger}` : "");
         req.onerror = () => reject(req.error);
       });
     }
+    async function idbDel(id) {
+      const db = await idb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction("props", "readwrite");
+        tx.objectStore("props").delete(id);
+        tx.oncomplete = resolve;
+        tx.onerror = () => reject(tx.error);
+      });
+    }
     async function idbGet(id) {
       const db = await idb();
       return new Promise((resolve, reject) => {
@@ -1791,6 +1810,47 @@ Cliffhanger: ${e.cliffhanger}` : "");
     };
 
     // ---------- Shelf ----------
+    let pendingDelete = null;
+    let pendingDeleteTimer = null;
+
+    // Removes a build everywhere it exists: any copies standing on the set, the
+    // on-device cache, the in-memory library, and the row plus stored files in
+    // Supabase. Local deletion happens first and unconditionally — if the
+    // server call fails the item is still gone from this device, and the next
+    // library load would bring a still-present row back, which is honest.
+    async function deleteLibraryItem(id, name) {
+      pendingDelete = null;
+      clearTimeout(pendingDeleteTimer);
+      const kind = cloudCast.has(id) || String(id).startsWith("cast_") ? "cast" : "props";
+      const inCloud = cloudCast.has(id) || cloudProps.has(id);
+
+      if (placedGroup) {
+        for (const h of [...placedGroup.children]) {
+          if (h.userData.item && h.userData.item.propId === id) {
+            if (selected && selected.holder === h) deselectProp();
+            fxDrop(h.userData.item.iid);
+            placedGroup.remove(h);
+          }
+        }
+        saveScene();
+      }
+      if (armedPropId === id) armedPropId = null;
+      cloudCast.delete(id);
+      cloudProps.delete(id);
+      await idbDel(id).catch(() => {});
+      renderShelf();
+
+      if (!inCloud) { hintEl.textContent = `Deleted ${name}`; return; }
+      try {
+        const r = await fetch(`/api/library?kind=${kind}&id=${encodeURIComponent(id)}`, { method: "DELETE" });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(d.error || `Delete failed (${r.status}).`);
+        hintEl.textContent = `Deleted ${name}`;
+      } catch (err) {
+        flashHint(err.message || "Couldn't delete that from the library.");
+      }
+    }
+
     async function renderShelf() {
       shelfRow.innerHTML = "";
 
@@ -1854,6 +1914,25 @@ Cliffhanger: ${e.cliffhanger}` : "");
         nm.textContent = p.name;
         chip.appendChild(img);
         chip.appendChild(nm);
+
+        // Deleting a build is permanent, so it takes two taps: the first arms
+        // the badge, the second does it. Arming clears itself after a few
+        // seconds so a stray tap cannot sit there waiting to be confirmed.
+        const del = document.createElement("span");
+        del.className = "pc-del" + (pendingDelete === p.id ? " arm" : "");
+        del.textContent = pendingDelete === p.id ? "Sure?" : "×";
+        del.setAttribute("role", "button");
+        del.setAttribute("aria-label", pendingDelete === p.id ? `Confirm deleting ${p.name}` : `Delete ${p.name}`);
+        del.onclick = (e) => {
+          e.stopPropagation();
+          if (pendingDelete === p.id) { deleteLibraryItem(p.id, p.name); return; }
+          pendingDelete = p.id;
+          clearTimeout(pendingDeleteTimer);
+          pendingDeleteTimer = setTimeout(() => { pendingDelete = null; renderShelf(); }, 4000);
+          renderShelf();
+        };
+        chip.appendChild(del);
+
         chip.onclick = () => {
           armedPropId = armedPropId === p.id ? null : p.id;
           deselectProp();

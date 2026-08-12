@@ -30,7 +30,9 @@ via an importmap. It is served as-is.
   wall collision from the world's collider mesh, so placement and walking both
   respect the room.
 - **Props** — photo to 3D object via Tripo, saved to a permanent library, then
-  dragged, turned and scaled on the set.
+  dragged, turned and scaled on the set. Anything on the shelf can be deleted
+  from its × badge — two taps, since it also clears the stored model — which
+  removes it from the set, the device and the cloud library together.
 - **Cast** — photo to a rigged, animated character. Four photo slots
   (front required, left/back/right optional); more angles give a better likeness.
   Rigs carry idle, walk, run, hurt and fall clips. The pipeline refuses early —
