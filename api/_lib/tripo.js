@@ -33,8 +33,11 @@ export function castQuality() {
   const q = {
     texture: true,
     pbr: true,
-    // Props run 10k. Characters carry the close-ups, so they get the budget.
-    face_limit: num(process.env.TRIPO_CAST_FACE_LIMIT, 60000),
+    // Props run 10k. Characters carry the close-ups, so they get more — 16000
+    // is where the live ladder settled: P1-20260311 rejects anything above it
+    // ("face_limit value is invalid"), and starting higher just burns three
+    // rejected round-trips before landing here anyway.
+    face_limit: num(process.env.TRIPO_CAST_FACE_LIMIT, 16000),
     texture_quality: process.env.TRIPO_CAST_TEXTURE_QUALITY || 'detailed',
   };
   // Quad topology is for taking a model into Blender to retopologise by hand.

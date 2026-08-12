@@ -153,7 +153,8 @@ await check('cast quality defaults to the close-up tier', async () => {
   clearCastEnv();
   const q = tripo.castQuality();
   eq(q.texture_quality, 'detailed', 'texture_quality');
-  eq(q.face_limit, 60000, 'face_limit');
+  // 16000 is the live-verified cap for P1-20260311 — see the ladder comment.
+  eq(q.face_limit, 16000, 'face_limit');
   eq(q.texture, true, 'texture');
   eq(q.pbr, true, 'pbr');
 });

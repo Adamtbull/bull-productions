@@ -457,6 +457,9 @@
       font-family: "Space Grotesk", sans-serif; font-size: 12px; color: var(--chalk);
     }
     .clean-toggle input { accent-color: var(--tungsten); width: 16px; height: 16px; flex: none; }
+    #cast-tip {
+      margin: 6px 0 2px; font-size: 11px; line-height: 1.35; color: var(--dust);
+    }
     #scene-strip { bottom: calc(46px + env(safe-area-inset-bottom)); max-height: 44vh; overflow-y: auto; }
     #scene-title { font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #scene-logline { font-size: 12px; color: var(--dust); margin: 2px 0 4px; }
@@ -782,6 +785,8 @@
         <input type="text" id="cast-name" placeholder="Name this actor" autocomplete="off" maxlength="40" />
       </div>
       <div class="cast-grid" id="cast-grid"></div>
+      <p id="cast-tip">Extra angles only help if they match: same pose, same outfit,
+        same distance, square-on. One good front photo beats four that disagree.</p>
       <div class="edit-row">
         <label class="clean-toggle" for="cast-clean">
           <input type="checkbox" id="cast-clean" />
@@ -2033,39 +2038,56 @@ Cliffhanger: ${e.cliffhanger}` : "");
       renderShelf();
     };
 
+    // Polls run one at a time \u2014 the next request is scheduled only after the
+    // previous one answers. setInterval was firing every 4s regardless, and the
+    // anim stage downloads a multi-megabyte GLB from Tripo and re-uploads it to
+    // Supabase, which takes far longer than that. The requests stacked up, and
+    // each completion independently saved the character: duplicate library
+    // entries, duplicate storage, and \u2014 because every stage transition also
+    // STARTS a Tripo task \u2014 duplicate billed work at each stage.
     function runCastPipeline(firstTaskId, name) {
       return new Promise((resolve) => {
         let st = { stage: "model", id: firstTaskId, model: firstTaskId };
-        const t = setInterval(async () => {
+        let done = false;
+        const finish = (v) => { if (!done) { done = true; resolve(v); } };
+        (async function tick() {
+          if (done) return;
           try {
             const qs = `stage=${encodeURIComponent(st.stage)}&id=${encodeURIComponent(st.id)}` +
               `&model=${encodeURIComponent(st.model || "")}&name=${encodeURIComponent(name)}`;
             const r = await fetch(`/api/cast-task?${qs}`);
             const d = await r.json();
-            if (!r.ok) { clearInterval(t); resolve({ error: d.error || `Cast poll failed (${r.status}).` }); return; }
-            if (d.done) { clearInterval(t); resolve(d); return; }
+            if (!r.ok) return finish({ error: d.error || `Cast poll failed (${r.status}).` });
+            if (d.done) return finish(d);
             st = { stage: d.stage || st.stage, id: d.id || st.id, model: d.model || st.model };
             const label = CAST_LABELS[st.stage] || "Building\u2026";
             if (castStage !== label) { castStage = label; renderShelf(); }
           } catch (e) {
-            clearInterval(t); resolve({ error: "Lost connection while building the character." });
+            return finish({ error: "Lost connection while building the character." });
           }
-        }, 4000);
+          setTimeout(tick, 4000);
+        })();
       });
     }
 
+    // Sequential for the same reason as runCastPipeline: props-task persists the
+    // finished model, so overlapping polls saved it more than once.
     function pollProp(taskId, propName) {
       return new Promise((resolve) => {
-        const t = setInterval(async () => {
+        let done = false;
+        const finish = (v) => { if (!done) { done = true; resolve(v); } };
+        (async function tick() {
+          if (done) return;
           try {
             const r = await fetch(`/api/props-task?id=${encodeURIComponent(taskId)}&name=${encodeURIComponent(propName || "Prop")}`);
             const d = await r.json();
-            if (!r.ok) { clearInterval(t); resolve({ error: d.error || `Poll failed (${r.status}).` }); return; }
-            if (d.done) { clearInterval(t); resolve(d); }
+            if (!r.ok) return finish({ error: d.error || `Poll failed (${r.status}).` });
+            if (d.done) return finish(d);
           } catch (e) {
-            clearInterval(t); resolve({ error: "Lost connection while building the prop." });
+            return finish({ error: "Lost connection while building the prop." });
           }
-        }, 4000);
+          setTimeout(tick, 4000);
+        })();
       });
     }
 

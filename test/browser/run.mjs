@@ -34,6 +34,17 @@ await page.waitForTimeout(1200);
 
 // The "+ Cast" chip only exists inside a world, which needs real splat assets.
 // So run the panel's own code, lifted out of index.html, against the real DOM.
+// The pollers that PERSIST a build (cast + props) must schedule the next
+// request only after the previous one answers. With setInterval they stacked
+// up — the multi-megabyte save outlasts the interval — and each completion
+// saved the same character again, duplicating rows, storage and Tripo tasks.
+// (Clock and film-grain timers are legitimately interval-driven, so this is
+// deliberately scoped to those two functions.)
+const pollersSequential = ['function runCastPipeline', 'function pollProp'].every((sig) => {
+  const i = html.indexOf(sig);
+  return i > 0 && !html.slice(i, i + 1600).includes('setInterval(');
+});
+
 const castBlock = (() => {
   const m = readFileSync(new URL('../../index.html', import.meta.url), 'utf8')
     .match(/<script type="module">([\s\S]*?)<\/script>/)[1];
@@ -123,6 +134,7 @@ const r = await page.evaluate(() => {
     sceneWriteWired: !!(document.getElementById('scene-write') || {}).onclick,
     castCleanCheckbox: !!document.getElementById('cast-clean'),
     castCleanUnchecked: (document.getElementById('cast-clean') || {}).checked === false,
+    castTip: /same pose/i.test((document.getElementById('cast-tip') || {}).textContent || ''),
   };
 });
 
@@ -138,6 +150,7 @@ console.log('  writers room    :', r.wrPresent ? 'present' : 'MISSING', '| form 
 console.log('  act/hand rows   :', r.actRowHidden && r.holdRowHidden ? 'present, hidden until selection' : 'WRONG', '| selects:', r.handSelects ? 'both' : 'MISSING', '| throw wired:', r.throwWired ? 'yes' : 'NO');
 console.log('  scene writer    :', r.sceneStrip ? 'strip present' : 'MISSING', '| closed at boot:', r.sceneClosed, '| Write wired:', r.sceneWriteWired ? 'yes' : 'NO');
 console.log('  cast clean-up   :', r.castCleanCheckbox ? 'checkbox present' : 'MISSING', '| defaults off:', r.castCleanUnchecked);
+console.log('  multiview tip   :', r.castTip ? 'present' : 'MISSING', '| saving pollers sequential:', pollersSequential);
 console.log('  onchange wired  :', r.handlerWired ? 'yes' : 'NO');
 console.log('  page errors     :', errors.length ? errors : 'none');
 console.log('  console errors  :', logs.length ? logs.slice(0,4) : 'none');
@@ -146,7 +159,7 @@ await browser.close(); srv.close();
 const ok = r.fxOptions === 27 && r.lookOptions === 7 && r.lookOverlays && r.wrPresent && r.wrFormHidden && r.wrLookOptions === 7 && r.fxSelect && r.burstBtn && r.handlerWired
   && r.actRowHidden && r.holdRowHidden && r.handSelects && r.throwWired
   && r.sceneStrip && r.sceneClosed && r.sceneWriteWired
-  && r.castCleanCheckbox && r.castCleanUnchecked
+  && r.castCleanCheckbox && r.castCleanUnchecked && r.castTip && pollersSequential
   && errors.length === 0 && r.castStrip && castOk;
 console.log(ok ? '\nPASS — page boots, effects UI builds, cast panel opens with 4 gated slots, no runtime errors' : '\nFAIL');
 process.exit(ok ? 0 : 1);
