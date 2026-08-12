@@ -452,6 +452,11 @@
     .pill.on { border-color: var(--tungsten); background: #241d0f; }
     #stage-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
     #cast-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
+    .clean-toggle {
+      display: flex; align-items: center; gap: 8px;
+      font-family: "Space Grotesk", sans-serif; font-size: 12px; color: var(--chalk);
+    }
+    .clean-toggle input { accent-color: var(--tungsten); width: 16px; height: 16px; flex: none; }
     #scene-strip { bottom: calc(46px + env(safe-area-inset-bottom)); max-height: 44vh; overflow-y: auto; }
     #scene-title { font-size: 14px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #scene-logline { font-size: 12px; color: var(--dust); margin: 2px 0 4px; }
@@ -777,6 +782,12 @@
         <input type="text" id="cast-name" placeholder="Name this actor" autocomplete="off" maxlength="40" />
       </div>
       <div class="cast-grid" id="cast-grid"></div>
+      <div class="edit-row">
+        <label class="clean-toggle" for="cast-clean">
+          <input type="checkbox" id="cast-clean" />
+          Tidy the background first (AI)
+        </label>
+      </div>
       <div class="edit-row">
         <span class="edit-label" id="cast-mode-label">Need front</span>
         <button class="btn small ghost" id="cast-cancel" type="button">Cancel</button>
@@ -1454,6 +1465,7 @@ Cliffhanger: ${e.cliffhanger}` : "");
     const castStrip = document.getElementById("cast-strip");
     const castGrid = document.getElementById("cast-grid");
     const castNameInput = document.getElementById("cast-name");
+    const castCleanCheckbox = document.getElementById("cast-clean");
     const castModeLabel = document.getElementById("cast-mode-label");
     const castBuildBtn = document.getElementById("cast-build");
     const castCancelBtn = document.getElementById("cast-cancel");
@@ -1941,6 +1953,7 @@ Cliffhanger: ${e.cliffhanger}` : "");
     function openCastPanel() {
       for (const k of Object.keys(castViews)) castViews[k] = null;
       castNameInput.value = "";
+      castCleanCheckbox.checked = false;
       renderCastSlots();
       castStrip.classList.add("on");
       shelfEl.classList.remove("on");
@@ -1988,10 +2001,11 @@ Cliffhanger: ${e.cliffhanger}` : "");
         const res = await fetch("/api/cast-generate", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ views }),
+          body: JSON.stringify({ views, clean_background: castCleanCheckbox.checked }),
         });
         const started = await res.json();
         if (!res.ok) throw new Error(started.error || `Cast start failed (${res.status}).`);
+        if (started.warn) flashHint(started.warn);
 
         const done = await runCastPipeline(started.task_id, name);
         if (done.error) throw new Error(done.error);

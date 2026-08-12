@@ -43,6 +43,7 @@ const cases = [
   ['show','POST',{body:{action:'create_show'}},'title'],
   ['show','POST',{body:{action:'write_next'}},'show_id'],
   ['library','GET',{query:{}},'kind'],
+  ['cast-generate','POST',{body:{}},'front-on photo'],
 ];
 // Configured, so validation is reached rather than the not-configured guard.
 const KEYS = {ANTHROPIC_API_KEY:'sk-test',TRIPO_API_KEY:'t',WORLDLABS_API_KEY:'w',
@@ -59,7 +60,7 @@ for (const [name, m, opt, needle] of cases) {
 }
 
 console.log('\n=== not-configured guard fires before validation ===');
-for (const [name, m] of [['generate','POST'],['direct','POST'],['props-task','GET']]) {
+for (const [name, m] of [['generate','POST'],['direct','POST'],['props-task','GET'],['cast-generate','POST']]) {
   await check(`${name} 500s when its key is absent`, async () => {
     const h = await load(name); const [req, res] = mock(m, {body:{}, query:{}}); await h(req, res);
     eq(res.statusCode, 500, 'status');
@@ -119,6 +120,28 @@ await check('direct schema requires the new fields', async () => {
 await check('cast-task bails out when the rig check says not riggable', async () => {
   const src = readFileSync(`${dir}/cast-task.js`, 'utf8');
   if (!src.includes('riggable === false')) throw new Error('riggable guard missing');
+});
+
+console.log('\n=== background clean-up is optional, never a build gate ===');
+const openaiSrc = readFileSync(`${dir}/_lib/openai.js`, 'utf8');
+const castGenSrc = readFileSync(`${dir}/cast-generate.js`, 'utf8');
+await check('_lib/openai.js exports cleanBackground and apiKey', async () => {
+  if (!openaiSrc.includes('export async function cleanBackground')) throw new Error('cleanBackground missing');
+  if (!openaiSrc.includes('export function apiKey')) throw new Error('apiKey missing');
+});
+await check('the clean-up prompt never asks to change the person', async () => {
+  if (!/background/i.test(openaiSrc)) throw new Error('prompt does not even mention the background');
+  if (!/unchanged|do not (add|alter)/i.test(openaiSrc)) throw new Error('prompt has no explicit hands-off-the-subject instruction');
+});
+await check('cast-generate degrades instead of gating when OPENAI_API_KEY is absent', async () => {
+  if (!castGenSrc.includes('openai.apiKey()')) throw new Error('missing apiKey guard');
+  // The guard must return a warn+fallback, not a json(res, 5xx, ...) error response.
+  const guard = castGenSrc.slice(castGenSrc.indexOf('!openai.apiKey()'));
+  const nextLine = guard.slice(0, guard.indexOf('\n', guard.indexOf('\n') + 1));
+  if (!/return \{ views, warn:/.test(nextLine)) throw new Error(`guard does not fall back cleanly: "${nextLine.trim()}"`);
+});
+await check('a failed clean-up per photo falls back to that photo, not an error', async () => {
+  if (!/catch \(error\)[\s\S]{0,260}return src/.test(castGenSrc)) throw new Error('per-photo failure does not fall back to the original');
 });
 
 console.log('\n=== props-proxy refuses non-allowlisted hosts (SSRF guard) ===');

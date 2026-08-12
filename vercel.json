@@ -2,5 +2,8 @@
   "rewrites": [
     { "source": "/api/props-list", "destination": "/api/library?kind=props" },
     { "source": "/api/cast-list", "destination": "/api/library?kind=cast" }
-  ]
+  ],
+  "functions": {
+    "api/cast-generate.js": { "maxDuration": 60 }
+  }
 }

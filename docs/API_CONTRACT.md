@@ -97,8 +97,21 @@ the sentinel `{"error":"too_large"}` is rewritten client-side to
 ## Cast
 
 ### `POST /api/cast-generate`
-Request: `{ "image_base64": "string" }`
-Response: `{ "task_id": "string" }`
+Request: `{ "image_base64": "string" }`, or `{ "views": { "front", "left", "back", "right" } }`
+for multiview (each optional except `front`). Either shape accepts an optional
+`"clean_background": boolean` (default false).
+Response: `{ "task_id": "string", "mode": "single|multiview", "warn": "string|null" }`
+
+`clean_background` runs each supplied photo through an OpenAI `gpt-image-1` edit
+before Tripo ever sees it, swapping only the backdrop for a plain grey studio
+background — the prompt explicitly leaves the person untouched, both because
+regenerating a real face would undercut the whole multiview-likeness pipeline and
+because these APIs are built to refuse exactly that. It targets the actual cause of
+most mangled casts: Tripo folding background clutter into the mesh. This step is
+cosmetic, never a gate — a missing `OPENAI_API_KEY` or a refused/failed edit falls
+back to that photo's original and reports why via `warn`, same convention as props
+and cast-task below. `warn` here arrives on the *start* response, before polling
+begins.
 
 ### `GET /api/cast-task?stage=<stage>&id=<id>&model=<model_task_id>&name=<name>`
 

@@ -43,10 +43,10 @@ const castBlock = (() => {
 const cast = await page.evaluate((src) => {
   const g = (id) => document.getElementById(id);
   const api = new Function('castGrid','castNameInput','castModeLabel','castBuildBtn',
-    'castStrip','shelfEl','hintEl','castPhotoInput',
+    'castStrip','shelfEl','hintEl','castPhotoInput','castCleanCheckbox',
     src + '; return { openCastPanel, closeCastPanel, renderCastSlots, castViews, CAST_SLOTS };')(
     g('cast-grid'), g('cast-name'), g('cast-mode-label'), g('cast-build'),
-    g('cast-strip'), g('shelf'), g('hint'), g('cast-photo-input'));
+    g('cast-strip'), g('shelf'), g('hint'), g('cast-photo-input'), g('cast-clean'));
 
   const snap = () => ({
     slots: [...document.querySelectorAll('[id^="cast-slot-"]')].map(e => e.id),
@@ -121,6 +121,8 @@ const r = await page.evaluate(() => {
     sceneStrip: !!document.getElementById('scene-strip'),
     sceneClosed: !(document.getElementById('scene-strip') || { classList: { contains: () => true } }).classList.contains('on'),
     sceneWriteWired: !!(document.getElementById('scene-write') || {}).onclick,
+    castCleanCheckbox: !!document.getElementById('cast-clean'),
+    castCleanUnchecked: (document.getElementById('cast-clean') || {}).checked === false,
   };
 });
 
@@ -135,6 +137,7 @@ console.log('  look overlays   :', r.lookOverlays ? 'all present' : 'MISSING');
 console.log('  writers room    :', r.wrPresent ? 'present' : 'MISSING', '| form hidden:', r.wrFormHidden, '| look options:', r.wrLookOptions);
 console.log('  act/hand rows   :', r.actRowHidden && r.holdRowHidden ? 'present, hidden until selection' : 'WRONG', '| selects:', r.handSelects ? 'both' : 'MISSING', '| throw wired:', r.throwWired ? 'yes' : 'NO');
 console.log('  scene writer    :', r.sceneStrip ? 'strip present' : 'MISSING', '| closed at boot:', r.sceneClosed, '| Write wired:', r.sceneWriteWired ? 'yes' : 'NO');
+console.log('  cast clean-up   :', r.castCleanCheckbox ? 'checkbox present' : 'MISSING', '| defaults off:', r.castCleanUnchecked);
 console.log('  onchange wired  :', r.handlerWired ? 'yes' : 'NO');
 console.log('  page errors     :', errors.length ? errors : 'none');
 console.log('  console errors  :', logs.length ? logs.slice(0,4) : 'none');
@@ -143,6 +146,7 @@ await browser.close(); srv.close();
 const ok = r.fxOptions === 27 && r.lookOptions === 7 && r.lookOverlays && r.wrPresent && r.wrFormHidden && r.wrLookOptions === 7 && r.fxSelect && r.burstBtn && r.handlerWired
   && r.actRowHidden && r.holdRowHidden && r.handSelects && r.throwWired
   && r.sceneStrip && r.sceneClosed && r.sceneWriteWired
+  && r.castCleanCheckbox && r.castCleanUnchecked
   && errors.length === 0 && r.castStrip && castOk;
 console.log(ok ? '\nPASS — page boots, effects UI builds, cast panel opens with 4 gated slots, no runtime errors' : '\nFAIL');
 process.exit(ok ? 0 : 1);

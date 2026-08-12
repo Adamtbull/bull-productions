@@ -35,7 +35,12 @@ via an importmap. It is served as-is.
   (front required, left/back/right optional); more angles give a better likeness.
   Rigs carry idle, walk, run, hurt and fall clips. The pipeline refuses early —
   before rigging spends credits — when Tripo's rig check says the photo won't rig
-  as one person.
+  as one person. An optional "Tidy the background first" checkbox has OpenAI swap
+  a cluttered backdrop for plain studio grey before the photo reaches Tripo — the
+  person is explicitly left untouched, both for likeness and because these APIs
+  won't touch a real face anyway — which cuts down on the background getting
+  folded into the mesh. Off by default; skips cleanly with a note if the key
+  isn't set or an edit fails.
 - **Acts, fights and props in hands** — a selected cast member has an Act row
   (Idle/Walk/Run/Hurt/Fall): hurt plays a random flinch and recovers, fall stays
   down until the next act. Walking a character somewhere plays their walk (or run)
@@ -105,11 +110,14 @@ call from the frontend is a same-origin relative path.
 | `WORLDLABS_API_KEY` | `generate`, `operation`, `worlds` |
 | `TRIPO_API_KEY` | `props-*`, `cast-*` |
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `props-list`, `cast-list`, `scene`, asset persistence |
-| `ANTHROPIC_API_KEY` | `direct`, `show` (writers' room) |
+| `ANTHROPIC_API_KEY` | `direct`, `show` (writers' room, one-off scenes) |
+| `OPENAI_API_KEY` (optional) | `cast-generate` background clean-up |
 
 Supabase holds `bp_props`, `bp_scenes` and `bp_cast` plus the public `bull-props`
 storage bucket. With Supabase unconfigured the libraries degrade to device-local
-rather than erroring.
+rather than erroring. `OPENAI_API_KEY` is the same story: leave it unset and the
+"Tidy the background first" checkbox just builds with the original photos instead
+of failing the whole character.
 
 See `docs/API_CONTRACT.md` for every route's request and response shape.
 
