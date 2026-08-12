@@ -144,6 +144,104 @@ await check('a failed clean-up per photo falls back to that photo, not an error'
   if (!/catch \(error\)[\s\S]{0,260}return src/.test(castGenSrc)) throw new Error('per-photo failure does not fall back to the original');
 });
 
+console.log('\n=== cast build quality + unverified-parameter fallback ===');
+const tripo = await import(`${dir}/_lib/tripo.js`);
+const CAST_ENV = ['TRIPO_CAST_FACE_LIMIT','TRIPO_CAST_TEXTURE_QUALITY','TRIPO_CAST_QUAD','TRIPO_CAST_MODEL_VERSION'];
+const clearCastEnv = () => { for (const k of CAST_ENV) delete process.env[k]; };
+
+await check('cast quality defaults to the close-up tier', async () => {
+  clearCastEnv();
+  const q = tripo.castQuality();
+  eq(q.texture_quality, 'detailed', 'texture_quality');
+  eq(q.face_limit, 60000, 'face_limit');
+  eq(q.texture, true, 'texture');
+  eq(q.pbr, true, 'pbr');
+});
+await check('quad stays off by default (it would break the rig pipeline)', async () => {
+  clearCastEnv();
+  if ('quad' in tripo.castQuality()) throw new Error('quad enabled without being asked for');
+  process.env.TRIPO_CAST_QUAD = '1';
+  eq(tripo.castQuality().quad, true, 'quad when opted in');
+  clearCastEnv();
+});
+await check('quality and model version are env-tunable without a deploy', async () => {
+  process.env.TRIPO_CAST_FACE_LIMIT = '120000';
+  process.env.TRIPO_CAST_TEXTURE_QUALITY = 'standard';
+  process.env.TRIPO_CAST_MODEL_VERSION = 'v3.1-test';
+  const q = tripo.castQuality();
+  eq(q.face_limit, 120000, 'face_limit');
+  eq(q.texture_quality, 'standard', 'texture_quality');
+  eq(tripo.castModelVersion(), 'v3.1-test', 'model version');
+  clearCastEnv();
+  if (!tripo.castModelVersion()) throw new Error('no default model version');
+});
+
+// startTask's retry is the safety net for parameters we could not verify
+// against the docs, so it is worth testing against a stubbed Tripo rather
+// than trusting the source to read correctly.
+const realFetch = globalThis.fetch;
+function stubTripo(responses) {
+  const seen = [];
+  globalThis.fetch = async (_url, init) => {
+    seen.push(JSON.parse(init.body));
+    const next = responses.shift();
+    return {
+      ok: next.ok !== false,
+      status: next.status || 200,
+      text: async () => JSON.stringify(next.body),
+    };
+  };
+  return seen;
+}
+process.env.TRIPO_API_KEY = 'test';
+
+await check('an unaccepted quality field is dropped and retried, not fatal', async () => {
+  const seen = stubTripo([
+    { ok: false, status: 400, body: { code: 2002, message: "invalid parameter 'texture_quality'" } },
+    { body: { code: 0, data: { task_id: 'task-retry' } } },
+  ]);
+  const id = await tripo.startTask(
+    { type: 'multiview_to_model', texture_quality: 'detailed', quad: true, face_limit: 60000 },
+    tripo.CAST_OPTIONAL_KEYS);
+  eq(id, 'task-retry', 'task id');
+  eq(seen.length, 2, 'attempts');
+  if ('texture_quality' in seen[1] || 'quad' in seen[1]) throw new Error('retry kept the rejected fields');
+  eq(seen[1].face_limit, 60000, 'retry keeps verified fields');
+});
+await check('a degraded build tells the caller, so the app can say so', async () => {
+  stubTripo([
+    { ok: false, status: 400, body: { code: 2002, message: "invalid parameter 'quad'" } },
+    { body: { code: 0, data: { task_id: 'task-x' } } },
+  ]);
+  let told = null;
+  await tripo.startTask({ type: 'image_to_model', quad: true }, tripo.CAST_OPTIONAL_KEYS,
+    (dropped) => { told = dropped; });
+  if (!told || !told.includes('quad')) throw new Error('degrade was not reported to the caller');
+});
+await check('an out-of-credit failure is never retried', async () => {
+  const seen = stubTripo([
+    { ok: false, status: 400, body: { code: 2004, message: 'insufficient balance' } },
+  ]);
+  let threw = false;
+  try { await tripo.startTask({ type: 'image_to_model', texture_quality: 'detailed' }, tripo.CAST_OPTIONAL_KEYS); }
+  catch (e) { threw = /balance/i.test(e.message); }
+  if (!threw) throw new Error('balance error was swallowed');
+  eq(seen.length, 1, 'attempts');
+});
+await check('an auth failure is never retried', async () => {
+  const seen = stubTripo([{ ok: false, status: 401, body: { code: 1001, message: 'invalid token' } }]);
+  try { await tripo.startTask({ type: 'image_to_model', quad: true }, tripo.CAST_OPTIONAL_KEYS); } catch {}
+  eq(seen.length, 1, 'attempts');
+});
+await check('a task with no optional fields fails fast, keeping Tripo’s wording', async () => {
+  stubTripo([{ ok: false, status: 400, body: { code: 2002, message: "invalid model 'v2.5-old'" } }]);
+  let msg = '';
+  try { await tripo.startTask({ type: 'animate_rig', model_version: 'v2.5-old' }); } catch (e) { msg = e.message; }
+  if (!msg.includes("invalid model")) throw new Error(`lost Tripo's message: "${msg}"`);
+});
+globalThis.fetch = realFetch;
+delete process.env.TRIPO_API_KEY;
+
 console.log('\n=== props-proxy refuses non-allowlisted hosts (SSRF guard) ===');
 for (const [u, why] of [['http://169.254.169.254/latest/meta-data/','cloud metadata'],
   ['https://evil.example.com/x.glb','arbitrary host'],['not-a-url','malformed']]) {

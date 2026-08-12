@@ -119,6 +119,7 @@ call from the frontend is a same-origin relative path.
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | `props-list`, `cast-list`, `scene`, asset persistence |
 | `ANTHROPIC_API_KEY` | `direct`, `show` (writers' room, one-off scenes) |
 | `OPENAI_API_KEY` (optional) | `cast-generate` background clean-up |
+| `TRIPO_CAST_FACE_LIMIT`, `TRIPO_CAST_TEXTURE_QUALITY`, `TRIPO_CAST_MODEL_VERSION`, `TRIPO_CAST_QUAD` (all optional) | tune cast build quality without a deploy |
 
 Supabase holds `bp_props`, `bp_scenes` and `bp_cast` plus the public `bull-props`
 storage bucket. With Supabase unconfigured the libraries degrade to device-local

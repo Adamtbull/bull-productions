@@ -57,17 +57,22 @@ export default async function handler(req, res) {
     const { views, warn } = await maybeClean({ front, left, back, right }, Boolean(body.clean_background));
     const supplied = [views.front, views.left, views.back, views.right].filter(Boolean).length;
 
+    // Cast run at the close-up tier — see castQuality() in _lib/tripo.js.
+    const quality = tripo.castQuality();
+    const notes = warn ? [warn] : [];
+    const onDegrade = (dropped) => {
+      notes.push(`Tripo wouldn't take ${dropped.join(' or ')} on this account, so this build ran at standard quality.`);
+    };
+
     if (supplied === 1) {
       const token = await tripo.uploadImage(views.front, 'front');
       const taskId = await tripo.startTask({
         type: 'image_to_model',
-        model_version: tripo.MODEL_VERSION,
+        model_version: tripo.castModelVersion(),
         file: { type: 'jpg', file_token: token },
-        texture: true,
-        pbr: true,
-        face_limit: 10000,
-      });
-      return json(res, 200, { task_id: taskId, mode: 'single', warn });
+        ...quality,
+      }, tripo.CAST_OPTIONAL_KEYS, onDegrade);
+      return json(res, 200, { task_id: taskId, mode: 'single', warn: notes.join(' ') || null });
     }
 
     // Tripo expects exactly four ordered slots; missing views are sent as {}.
@@ -80,18 +85,16 @@ export default async function handler(req, res) {
 
     const taskId = await tripo.startTask({
       type: 'multiview_to_model',
-      model_version: tripo.MODEL_VERSION,
+      model_version: tripo.castModelVersion(),
       files: tokens.map((t) => (t ? { type: 'jpg', file_token: t } : {})),
-      texture: true,
-      pbr: true,
-      face_limit: 10000,
-    });
+      ...quality,
+    }, tripo.CAST_OPTIONAL_KEYS, onDegrade);
 
     return json(res, 200, {
       task_id: taskId,
       mode: 'multiview',
       views_used: ['front', 'left', 'back', 'right'].filter((_, i) => Boolean(tokens[i])),
-      warn,
+      warn: notes.join(' ') || null,
     });
   } catch (error) {
     console.error('cast-generate:', error);

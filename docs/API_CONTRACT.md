@@ -102,6 +102,27 @@ for multiview (each optional except `front`). Either shape accepts an optional
 `"clean_background": boolean` (default false).
 Response: `{ "task_id": "string", "mode": "single|multiview", "warn": "string|null" }`
 
+Cast build at a higher tier than props, since characters carry the close-ups:
+`texture_quality: 'detailed'`, PBR on, and a 60k face budget against props' 10k
+(`castQuality()` in `_lib/tripo.js`). Every one of those is env-tunable without a
+deploy — `TRIPO_CAST_FACE_LIMIT`, `TRIPO_CAST_TEXTURE_QUALITY`,
+`TRIPO_CAST_MODEL_VERSION`, `TRIPO_CAST_QUAD=1`.
+
+`quad` is **off by default and should stay off** for anything that will be rigged
+here. Quad topology is for hand-retopologising in Blender; Tripo's own
+`animate_rig` works from the standard mesh, and glTF has no quad primitive so a
+GLB gets triangulated on export regardless. Turning it on risks the rig → retarget
+stages that produce the idle/walk/run/hurt/fall clips.
+
+Because tripo3d.ai is unreachable from the build environment, the exact spelling
+of the newest HD tier could not be confirmed by reading the docs. So
+`texture_quality`, `quad` and `model_version` are declared optional
+(`CAST_OPTIONAL_KEYS`): `startTask` logs Tripo's full rejection body — which names
+the offending field and usually lists what it will accept — then retries once
+without those fields and reports the degrade back through `warn`. A wrong guess
+therefore costs one validation round-trip and a plainer model, never a failed
+build. Auth and out-of-credit failures are explicitly never retried.
+
 `clean_background` runs each supplied photo through an OpenAI `gpt-image-1` edit
 before Tripo ever sees it, swapping only the backdrop for a plain grey studio
 background — the prompt explicitly leaves the person untouched, both because
