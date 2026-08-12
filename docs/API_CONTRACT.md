@@ -122,8 +122,12 @@ Response when finished:
 { "done": true,
   "cast": { "id", "name", "glb_url", "preview_url", "anims": { ... } } }
 ```
-`anims` carries the animation clips (idle + walk today). Optional `warn` / `error`
-as with props.
+`anims` describes the clips baked into the GLB (`preset:` idle, walk, run, hurt and
+fall today). Optional `warn` / `error` as with props.
+
+The `check` stage fails fast with a 502 and a plain-language message when Tripo's
+rig inspection reports `riggable: false` (typically a multi-person photo fused into
+one mesh), rather than spending credits rigging something that can never work.
 
 ### `GET /api/cast-list`
 Response: `{ "cloud": true, "cast": [ { "id", "name", "glb_url", "preview_url", "anims" } ] }`
@@ -175,14 +179,22 @@ Response:
 
 | verb | extra fields | notes |
 |---|---|---|
-| `moveto` | `x`, `z` | snapped to the collider surface; cast auto-turn to face travel |
+| `moveto` | `x`, `z` | snapped to the collider surface; cast auto-turn to face travel and auto-play walk (or run, above ~2.2 m/s) for the move |
 | `motion` | `type`, `speed` | `type` ∈ none/hover/bob/spin/orbit; `speed` clamped `0.25 .. 3` |
 | `appear` | `type` | `type` ∈ fade/rise/pop/sparkle (default `fade`) |
 | `vanish` | — | fixed 0.8 s fade-out |
 | `turn` | — | see `scheduleDirect` in `index.html` |
+| `act` | `clip` | cast only; `clip` ∈ idle/walk/run/hurt/fall (unknown → idle). `hurt` plays a short random slice of the reaction reel then returns to idle; `fall` clamps on its last frame and stays down; walk/run hold for `dur` |
+| `give` | `to` | props only; the prop rides the cast member's hand each frame (hands are found by shape — the bone with 4+ short finger chains). Commands whose `to` is not a known iid are dropped server-side |
+| `drop` | — | releases a held prop and floor-snaps it |
+| `throw` | `at` | prop flies a parabolic arc at the cast member in `at` (an unknown `at` is rewritten to `""` = straight ahead); impact fires a burst (comic POW under toon looks), punches the camera, and plays `hurt` on the victim |
 
 Any value outside the listed sets falls back to the default rather than erroring, so
 a loose model response degrades gracefully instead of breaking the scene.
+
+`act`, `give`, `drop` and `throw` were added after recovery (2026-08-12) alongside
+matching manual controls in the item panel; the schema carries `clip`, `to` and `at`
+as required fields with `"none"`/`""` defaults, per the flat-schema convention above.
 
 ---
 

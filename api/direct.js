@@ -11,6 +11,7 @@ const MODEL = 'claude-haiku-4-5';
 
 const MOTIONS = ['none', 'hover', 'bob', 'spin', 'orbit'];
 const ENTRANCES = ['fade', 'rise', 'pop', 'sparkle'];
+const CLIPS = ['none', 'idle', 'walk', 'run', 'hurt', 'fall'];
 
 // Structured outputs guarantee the response parses and matches this shape, so
 // there's no "reply with only JSON" prompting and no salvage parsing.
@@ -29,7 +30,7 @@ const SCHEMA = {
       items: {
         type: 'object',
         properties: {
-          verb: { type: 'string', enum: ['moveto', 'motion', 'appear', 'vanish', 'turn'] },
+          verb: { type: 'string', enum: ['moveto', 'motion', 'appear', 'vanish', 'turn', 'act', 'give', 'drop', 'throw'] },
           target: { type: 'string', description: 'The iid of the item this acts on.' },
           start: { type: 'number', description: 'Seconds from now to begin.' },
           dur: { type: 'number', description: 'Seconds the action takes (0.2 to 20).' },
@@ -41,8 +42,15 @@ const SCHEMA = {
             enum: [...new Set([...MOTIONS, ...ENTRANCES])],
           },
           speed: { type: 'number', description: 'Motion speed for motion (0.25 to 3); 1 otherwise.' },
+          clip: {
+            type: 'string',
+            description: 'Animation clip for act; "none" otherwise.',
+            enum: CLIPS,
+          },
+          to: { type: 'string', description: 'For give: the iid of the cast member who takes the prop. "" otherwise.' },
+          at: { type: 'string', description: 'For throw: the iid of the cast member it flies at, or "" to hurl it ahead. "" otherwise.' },
         },
-        required: ['verb', 'target', 'start', 'dur', 'x', 'z', 'type', 'speed'],
+        required: ['verb', 'target', 'start', 'dur', 'x', 'z', 'type', 'speed', 'clip', 'to', 'at'],
         additionalProperties: false,
       },
     },
@@ -66,18 +74,29 @@ The camera is at x=${cam.x}, z=${cam.z}. The floor is a flat plane; x and z are 
 and items are typically within about 8 metres of the origin.
 
 Verbs:
-- moveto  - travel to x,z over dur seconds. Cast members turn to face the way they walk.
+- moveto  - travel to x,z over dur seconds. Cast members turn to face the way they
+  walk, and automatically play their walk (or run) clip while moving.
 - motion  - set an ongoing motion: ${MOTIONS.join(', ')}. speed 0.25 to 3.
 - appear  - materialise with an entrance: ${ENTRANCES.join(', ')}.
 - vanish  - fade out.
 - turn    - rotate on the spot.
+- act     - a cast member plays a clip: idle, walk, run, hurt (a flinch — use it when
+  they are struck), fall (they collapse and stay down until their next act). Cast only.
+- give    - the target prop goes into the hand of the cast member in "to". Props only.
+- drop    - the held target prop falls to the floor.
+- throw   - the target prop flies at the cast member in "at" (leave "" to hurl it
+  straight ahead). On impact the victim flinches by themselves — no extra act needed.
 
 Rules:
 - target must be one of the iids above. Never invent an iid; if the instruction names
   something that is not on set, leave it out rather than guessing.
+- act works only on cast; give, drop and throw work only on props.
+- For a fight: stagger act hurt on whoever takes each blow, and finish whoever loses
+  with act fall.
 - Use start to stagger the action so it reads as a sequence, not everything at once.
-- Keep dur between 0.2 and 20 seconds.
-- Fill unused fields with harmless defaults: x and z as 0, type as "none", speed as 1.
+- Keep dur between 0.2 and 20 seconds. For act walk/run, dur is how long they keep it up.
+- Fill unused fields with harmless defaults: x and z as 0, type and clip as "none",
+  speed as 1, to and at as "".
 - If the instruction does not call for any change, return an empty commands list and
   say so in "say".
 
@@ -124,7 +143,10 @@ export default async function handler(req, res) {
     const known = new Set(items.map((i) => i.iid));
 
     return json(res, 200, {
-      commands: (parsed.commands || []).filter((c) => known.has(c.target)),
+      commands: (parsed.commands || [])
+        // A throw at someone unknown still flies — just at nothing in particular.
+        .map((c) => (c.verb === 'throw' && c.at && !known.has(c.at) ? { ...c, at: '' } : c))
+        .filter((c) => known.has(c.target) && (c.verb !== 'give' || known.has(c.to))),
       say: parsed.say || 'Rolling.',
     });
   } catch (error) {

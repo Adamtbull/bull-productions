@@ -417,6 +417,8 @@
     }
     #edit-strip { bottom: calc(46px + env(safe-area-inset-bottom)); }
     .edit-row { display: flex; align-items: center; gap: 10px; }
+    .act-btns { display: flex; gap: 6px; flex: 1; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .act-btns .btn { flex: none; }
     .edit-row + .edit-row { margin-top: 6px; }
     .edit-label {
       font-family: "Space Mono", monospace; font-size: 10px;
@@ -725,6 +727,15 @@
           <option value="none">No effect</option>
         </select>
         <button class="btn small" id="fx-burst" type="button">Burst</button>
+      </div>
+      <div class="edit-row" id="act-row" hidden>
+        <span class="edit-label">Act</span>
+        <div class="act-btns" id="act-btns"></div>
+      </div>
+      <div class="edit-row" id="hold-row" hidden>
+        <span class="edit-label">Hand</span>
+        <select id="give-select"></select>
+        <select id="throw-select"></select>
       </div>
     </div>
 
@@ -1434,6 +1445,11 @@ Cliffhanger: ${e.cliffhanger}` : "");
     const fxBurstBtn = document.getElementById("fx-burst");
     const entranceSelect = document.getElementById("entrance-select");
     const entrancePlayBtn = document.getElementById("entrance-play");
+    const actRow = document.getElementById("act-row");
+    const actBtns = document.getElementById("act-btns");
+    const holdRow = document.getElementById("hold-row");
+    const giveSelect = document.getElementById("give-select");
+    const throwSelect = document.getElementById("throw-select");
     const stageStrip = document.getElementById("stage-strip");
     const actionBtn = document.getElementById("action-btn");
     const directInput = document.getElementById("direct-input");
@@ -1922,8 +1938,11 @@ Cliffhanger: ${e.cliffhanger}` : "");
       try {
         const b64 = await resizeToBase64(file, 1280, 0.85);
         castViews[key] = { b64, name: (file.name || "").replace(/\.[^.]+$/, "") };
-        if (!castNameInput.value && key === "front" && castViews.front.name) {
-          castNameInput.value = castViews.front.name.slice(0, 40);
+        // Phones name photos IMG_0412 or a UUID — only suggest names that read
+        // like a name, otherwise the actor ends up labelled with hex soup.
+        const guess = (castViews.front && castViews.front.name || "").trim();
+        if (!castNameInput.value && key === "front" && /^[a-z][a-z '-]{1,24}$/i.test(guess)) {
+          castNameInput.value = guess;
         }
         renderCastSlots();
       } catch {
@@ -1933,7 +1952,7 @@ Cliffhanger: ${e.cliffhanger}` : "");
 
     castBuildBtn.onclick = async () => {
       if (!castViews.front || castStage) return;
-      const name = (castNameInput.value.trim() || castViews.front.name || "Cast").slice(0, 40);
+      const name = (castNameInput.value.trim() || "Actor").slice(0, 40);
       const views = {};
       for (const s of CAST_SLOTS) views[s.key] = castViews[s.key] ? castViews[s.key].b64 : null;
 
@@ -2070,8 +2089,17 @@ Cliffhanger: ${e.cliffhanger}` : "");
       holder.userData.t = Math.random() * 10;
       if (gltf.animations && gltf.animations.length) {
         const mixer = new THREE.AnimationMixer(obj);
-        mixer.clipAction(gltf.animations[0]).play();
+        // Tripo rigs carry preset:idle/walk/run/hurt/fall — register the lot so
+        // acts can switch between them, and start on idle.
+        const acts = {};
+        for (const clip of gltf.animations) {
+          acts[clip.name.replace(/^preset:/, "").toLowerCase()] = mixer.clipAction(clip);
+        }
+        const first = acts.idle ? "idle" : Object.keys(acts)[0];
+        acts[first].play();
         holder.userData.mixer = mixer;
+        holder.userData.acts = acts;
+        holder.userData.actName = first;
       }
       holder.userData.mats = [];
       obj.traverse((o) => {
@@ -2106,6 +2134,136 @@ Cliffhanger: ${e.cliffhanger}` : "");
       }
     }
 
+    // ---------- Acts: playing a rig's clips on cue ----------
+    // hurt is a long reaction reel, so each hit plays a short random slice of
+    // it; fall runs once and clamps on the last frame, staying down until the
+    // next act picks the character up.
+    const ACT_LABELS = { idle: "Idle", walk: "Walk", run: "Run", hurt: "Hurt", fall: "Fall" };
+    const ACT_ORDER = ["idle", "walk", "run", "hurt", "fall"];
+    function setAct(h, name, holdFor) {
+      const acts = h.userData.acts;
+      if (!acts) return false;
+      if (!acts[name]) name = acts.idle ? "idle" : Object.keys(acts)[0];
+      const next = acts[name];
+      h.userData.actName = name;
+      h.userData.actTimer = null;
+      for (const a of Object.values(acts)) if (a !== next) a.fadeOut(0.2);
+      next.reset();
+      if (name === "fall") {
+        next.setLoop(THREE.LoopOnce, 1);
+        next.clampWhenFinished = true;
+      } else {
+        next.setLoop(THREE.LoopRepeat, Infinity);
+        next.clampWhenFinished = false;
+      }
+      if (name === "hurt") {
+        const len = next.getClip().duration;
+        next.time = Math.random() * Math.max(0, len - 1.4);
+        h.userData.actTimer = { t: 0, dur: 1.1, then: "idle" };
+      } else if (holdFor && name !== "fall" && name !== "idle") {
+        h.userData.actTimer = { t: 0, dur: holdFor, then: "idle" };
+      }
+      next.fadeIn(0.2).play();
+      return true;
+    }
+
+    // ---------- Hands: holding, dropping, throwing ----------
+    // Tripo skeletons have no standard bone names, so hands are found by shape:
+    // a palm is the one bone with four-plus short finger chains hanging off it.
+    function boneDepth(b) {
+      let d = 0;
+      for (const c of b.children) if (c.isBone) d = Math.max(d, 1 + boneDepth(c));
+      return d;
+    }
+    function findHands(h) {
+      if (h.userData.hands !== undefined) return h.userData.hands;
+      h.updateMatrixWorld(true);
+      const palms = [];
+      h.traverse((o) => {
+        if (!o.isBone) return;
+        const bones = o.children.filter((c) => c.isBone);
+        const fingers = bones.filter((c) => boneDepth(c) >= 1 && boneDepth(c) <= 4);
+        if (fingers.length >= 4 && fingers.length === bones.length) palms.push(o);
+      });
+      let hands = null;
+      if (palms.length) {
+        const inv = new THREE.Matrix4().copy(h.matrixWorld).invert();
+        const withX = palms.map((b) => {
+          const p = b.getWorldPosition(new THREE.Vector3()).applyMatrix4(inv);
+          return { bone: b, x: p.x };
+        }).sort((a, b) => a.x - b.x);
+        hands = { right: withX[0].bone, left: withX[withX.length - 1].bone };
+      }
+      h.userData.hands = hands;
+      return hands;
+    }
+
+    function giveProp(propIid, castIid, side) {
+      const h = holderByIid(propIid), owner = holderByIid(castIid);
+      if (!h || !owner || !h.userData.item || h.userData.item.kind === "cast") return false;
+      const it = h.userData.item;
+      h.userData.move = null;
+      h.userData.throwArc = null;
+      it.motion = "none";
+      it.held = { by: castIid, side: side === "left" ? "left" : "right" };
+      saveScene();
+      return true;
+    }
+
+    function dropProp(propIid) {
+      const h = holderByIid(propIid);
+      if (!h || !h.userData.item || !h.userData.item.held) return;
+      const it = h.userData.item;
+      it.held = null;
+      const rest = dropToSurface(new THREE.Vector3(it.x, it.y, it.z));
+      it.x = rest.x; it.y = rest.y; it.z = rest.z;
+      saveScene();
+    }
+
+    function throwProp(propIid, atIid) {
+      const h = holderByIid(propIid);
+      if (!h || !h.userData.item || h.userData.item.kind === "cast") return;
+      const it = h.userData.item;
+      const thrower = it.held ? holderByIid(it.held.by) : null;
+      it.held = null;
+      const from = new THREE.Vector3(it.x, it.y, it.z);
+      let to = null, victim = null;
+      const target = atIid ? holderByIid(atIid) : null;
+      if (target && target.userData.item) {
+        victim = target.userData.item;
+        to = new THREE.Vector3(victim.x, (victim.y || 0) + 1.0 * (victim.scale || 1), victim.z);
+      } else {
+        // Nothing to aim at: hurl it the way the thrower (or the camera) faces.
+        const yaw = thrower ? (thrower.userData.item.rotY || 0) : Math.atan2(
+          camera.getWorldDirection(new THREE.Vector3()).x,
+          camera.getWorldDirection(new THREE.Vector3()).z);
+        to = dropToSurface(new THREE.Vector3(from.x + Math.sin(yaw) * 3, from.y, from.z + Math.cos(yaw) * 3));
+      }
+      const dur = Math.min(1.2, Math.max(0.45, from.distanceTo(to) / 7));
+      h.userData.move = null;
+      h.userData.throwArc = {
+        t: 0, dur, from, to,
+        victim: victim ? victim.iid : null,
+        spin: (Math.random() < 0.5 ? -1 : 1) * (6 + Math.random() * 6),
+      };
+    }
+
+    function landThrow(h, th) {
+      const it = h.userData.item;
+      const victim = th.victim ? holderByIid(th.victim) : null;
+      const rest = dropToSurface(new THREE.Vector3(it.x, it.y, it.z));
+      if (!colliderReady && victim) rest.y = victim.userData.item.y || 0;
+      it.x = rest.x; it.y = rest.y; it.z = rest.z;
+      // Impact at the point of contact — comic-book POW under a toon look.
+      const kind = currentLook && currentLook.toon ? "comichit" : "impact";
+      const e = fxFor(it.iid + ":hit", kind);
+      if (e) { e.origin.set(th.to.x, th.to.y, th.to.z); e.burst(); }
+      if (typeof screenPunch === "function") screenPunch(FX_PUNCH[kind] || 0.5);
+      if (victim && victim.userData.acts) setAct(victim, "hurt");
+      saveScene();
+    }
+    const handPos = new THREE.Vector3();
+
     // Motion behaviours and entrances, every frame
     function updateProps(dt) {
       if (!placedGroup) return;
@@ -2130,7 +2288,25 @@ Cliffhanger: ${e.cliffhanger}` : "");
             it.x = mv.fromX + (mv.toX - mv.fromX) * e;
             it.y = mv.fromY + (mv.toY - mv.fromY) * e;
             it.z = mv.fromZ + (mv.toZ - mv.fromZ) * e;
-            if (p >= 1) { h.userData.move = null; saveScene(); }
+            if (p >= 1) {
+              h.userData.move = null;
+              if (mv.acted && h.userData.acts) setAct(h, "idle");
+              saveScene();
+            }
+          }
+        }
+        const th = h.userData.throwArc;
+        if (th) {
+          th.t += dt;
+          const p = Math.min(1, th.t / th.dur);
+          const arc = Math.max(0.5, th.from.distanceTo(th.to) * 0.22);
+          it.x = th.from.x + (th.to.x - th.from.x) * p;
+          it.z = th.from.z + (th.to.z - th.from.z) * p;
+          it.y = th.from.y + (th.to.y - th.from.y) * p + arc * 4 * p * (1 - p);
+          it.rotY = (it.rotY || 0) + th.spin * dt;
+          if (p >= 1) {
+            h.userData.throwArc = null;
+            landThrow(h, th);
           }
         }
         const tw = h.userData.turnTo;
@@ -2162,6 +2338,11 @@ Cliffhanger: ${e.cliffhanger}` : "");
         h.userData.t = (h.userData.t || 0) + dt * (it.mspeed || 1);
         const t = h.userData.t;
         if (h.userData.mixer) h.userData.mixer.update(dt * (it.mspeed || 1));
+        const at = h.userData.actTimer;
+        if (at) {
+          at.t += dt * (it.mspeed || 1);
+          if (at.t >= at.dur) { h.userData.actTimer = null; setAct(h, at.then); }
+        }
 
         switch (it.motion) {
           case "hover":
@@ -2215,10 +2396,35 @@ Cliffhanger: ${e.cliffhanger}` : "");
         h.scale.setScalar(s);
         setHolderOpacity(h, k);
       }
+
+      // Held props ride their owner's hand — after every rig has animated.
+      for (const h of placedGroup.children) {
+        const it = h.userData.item;
+        if (!it || !it.held) continue;
+        const owner = holderByIid(it.held.by);
+        if (!owner) continue; // a loading scene may not have built the owner yet
+        const hands = findHands(owner);
+        const bone = hands ? (hands[it.held.side] || hands.right) : null;
+        owner.updateMatrixWorld(true);
+        if (bone) {
+          bone.getWorldPosition(handPos);
+        } else {
+          // No detectable hands on this rig: carry it out in front instead.
+          const os = owner.userData.item.scale || 1;
+          const yaw = owner.rotation.y;
+          handPos.set(
+            owner.position.x + Math.sin(yaw) * 0.3 * os,
+            owner.position.y + 1.05 * os,
+            owner.position.z + Math.cos(yaw) * 0.3 * os);
+        }
+        it.x = handPos.x; it.y = handPos.y; it.z = handPos.z;
+        h.position.copy(handPos);
+        if (selectBox && selected && selected.holder === h) selectBox.update();
+      }
     }
 
     // ---------- Effects ----------
-    // 23 presets. Continuous ones run for as long as the item carries them;
+    // 26 presets. Continuous ones run for as long as the item carries them;
     // one-shot ones fire from the Burst button and from Action.
     //
     // Physics per particle: p += v*dt, v.y += gravity*dt, v *= 1 - drag*dt.
@@ -2903,6 +3109,7 @@ Cliffhanger: ${e.cliffhanger}` : "");
     function selectProp(holder) {
       deselectProp();
       selected = { holder, item: holder.userData.item };
+      if (!selected.item.iid) selected.item.iid = "i" + Math.random().toString(36).slice(2, 9);
       selectBox = new THREE.BoxHelper(holder, 0xf0a63e);
       scene3.add(selectBox);
       rotRange.value = String(((selected.item.rotY || 0) * 180 / Math.PI) % 360);
@@ -2912,6 +3119,8 @@ Cliffhanger: ${e.cliffhanger}` : "");
       entranceSelect.value = selected.item.entrance || "none";
       fxSelect.value = selected.item.fx || "none";
       tagInput.value = selected.item.name || "";
+      refreshActRow();
+      refreshHoldRow();
       editStrip.classList.add("on");
       floorStrip.classList.remove("on");
       hintEl.textContent = "Drag to move \u00b7 sliders to turn and size";
@@ -3027,6 +3236,73 @@ Cliffhanger: ${e.cliffhanger}` : "");
       else hintEl.textContent = FX_PRESETS[id].label + " runs on its own";
     };
 
+    // ---------- Acts row and hand row ----------
+    function refreshActRow() {
+      const h = selected && selected.holder;
+      const acts = h && h.userData.acts;
+      actRow.hidden = !acts;
+      if (!acts) return;
+      actBtns.innerHTML = "";
+      for (const name of ACT_ORDER) {
+        if (!acts[name]) continue;
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "btn small pill" + (h.userData.actName === name ? " on" : "");
+        b.textContent = ACT_LABELS[name] || name;
+        b.onclick = () => {
+          setAct(h, name);
+          for (const x of actBtns.children) x.classList.toggle("on", x === b);
+        };
+        actBtns.appendChild(b);
+      }
+    }
+
+    function castHoldersOnSet() {
+      if (!placedGroup) return [];
+      return placedGroup.children.filter((h) => {
+        const it = h.userData.item;
+        if (!it || it.kind !== "cast") return false;
+        if (!it.iid) it.iid = "i" + Math.random().toString(36).slice(2, 9);
+        return true;
+      });
+    }
+
+    function refreshHoldRow() {
+      const it = selected && selected.item;
+      const holders = it && it.kind !== "cast" ? castHoldersOnSet() : [];
+      holdRow.hidden = !holders.length;
+      if (holdRow.hidden) return;
+      const opt = (sel, value, label) => {
+        const o = document.createElement("option");
+        o.value = value; o.textContent = label;
+        sel.appendChild(o);
+      };
+      giveSelect.innerHTML = "";
+      opt(giveSelect, "", "On the set");
+      for (const h of holders) opt(giveSelect, h.userData.item.iid, "Held by " + (h.userData.item.name || "Actor"));
+      giveSelect.value = it.held ? it.held.by : "";
+      if (!giveSelect.value && it.held) it.held = null; // its holder left the set
+
+      throwSelect.innerHTML = "";
+      opt(throwSelect, "", "Throw at…");
+      for (const h of holders) opt(throwSelect, h.userData.item.iid, h.userData.item.name || "Actor");
+      opt(throwSelect, "__forward", "Straight ahead");
+      throwSelect.value = "";
+    }
+
+    giveSelect.onchange = () => {
+      if (!selected) return;
+      if (giveSelect.value) giveProp(selected.item.iid, giveSelect.value);
+      else dropProp(selected.item.iid);
+      if (selectBox) selectBox.update();
+    };
+    throwSelect.onchange = () => {
+      if (!selected || !throwSelect.value) return;
+      throwProp(selected.item.iid, throwSelect.value === "__forward" ? null : throwSelect.value);
+      throwSelect.value = "";
+      giveSelect.value = "";
+    };
+
     // ---------- The Director: plain language in, choreography out ----------
     function holderByIid(iid) {
       if (!placedGroup) return null;
@@ -3047,8 +3323,24 @@ Cliffhanger: ${e.cliffhanger}` : "");
             if (it.kind === "cast" && (to.x !== it.x || to.z !== it.z)) {
               it.rotY = Math.atan2(to.x - it.x, to.z - it.z);
             }
-            h.userData.move = { t: 0, dur, fromX: it.x, fromY: it.y, fromZ: it.z, toX: to.x, toY: to.y, toZ: to.z };
+            it.held = null; // travelling under its own steam leaves the hand
+            // Cast walk their moves — or run them, when the pace demands it.
+            const dist = Math.hypot(to.x - it.x, to.z - it.z);
+            const acted = it.kind === "cast" && !!h.userData.acts && dist > 0.1 &&
+              setAct(h, dist / dur > 2.2 ? "run" : "walk");
+            h.userData.move = { t: 0, dur, fromX: it.x, fromY: it.y, fromZ: it.z, toX: to.x, toY: to.y, toZ: to.z, acted };
           } });
+        } else if (c.verb === "act") {
+          directSched.push({ t: -start, fn: () => {
+            const clip = ACT_ORDER.includes(c.clip) ? c.clip : "idle";
+            setAct(h, clip, clip === "walk" || clip === "run" ? dur : undefined);
+          } });
+        } else if (c.verb === "give") {
+          directSched.push({ t: -start, fn: () => { giveProp(c.target, c.to); } });
+        } else if (c.verb === "drop") {
+          directSched.push({ t: -start, fn: () => { dropProp(c.target); } });
+        } else if (c.verb === "throw") {
+          directSched.push({ t: -start, fn: () => { throwProp(c.target, c.at || null); } });
         } else if (c.verb === "motion") {
           directSched.push({ t: -start, fn: () => {
             it.motion = ["none", "hover", "bob", "spin", "orbit"].includes(c.type) ? c.type : "none";

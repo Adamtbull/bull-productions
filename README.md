@@ -33,7 +33,16 @@ via an importmap. It is served as-is.
   dragged, turned and scaled on the set.
 - **Cast** — photo to a rigged, animated character. Four photo slots
   (front required, left/back/right optional); more angles give a better likeness.
-  Rigs carry idle, walk, run, hurt and fall clips.
+  Rigs carry idle, walk, run, hurt and fall clips. The pipeline refuses early —
+  before rigging spends credits — when Tripo's rig check says the photo won't rig
+  as one person.
+- **Acts, fights and props in hands** — a selected cast member has an Act row
+  (Idle/Walk/Run/Hurt/Fall): hurt plays a random flinch and recovers, fall stays
+  down until the next act. Walking a character somewhere plays their walk (or run)
+  by itself. A selected prop can be handed to any cast member — hands are found on
+  the rig by shape, so it works on Tripo's unnamed skeletons — carried around, dropped,
+  or thrown at someone: parabolic arc, impact burst (comic POW under toon looks),
+  camera punch, and the victim flinches without being asked.
 - **Motion and entrances** — float, bob, spin, orbit; fade, rise, pop, materialise.
   Action staggers them so a take reads as one sequence.
 - **Effects** — 26 per-item particle effects. 19 continuous (fire, torch, campfire,
@@ -47,7 +56,8 @@ via an importmap. It is served as-is.
   grain, vignette and letterbox on top. Claymation runs the scene at 12
   hand-wobbled frames a second, stop-motion style.
 - **Director** — type an instruction and Claude turns it into scheduled move,
-  motion, appear, vanish and turn commands against the tagged items on set.
+  motion, appear, vanish, turn, act, give, drop and throw commands against the
+  tagged items on set — "Dave runs at Steve and Steve decks him" now stages itself.
 - **The writers' room** — shows with continuing storylines. A show carries a
   premise, a tone (comedy, action comedy, anime saga, clay deathmatch, sitcom,
   drama) and a default look. "Write the next episode" has Claude read the whole
@@ -61,7 +71,7 @@ via an importmap. It is served as-is.
 
 ```bash
 npm install
-npm test          # route guards + all 23 effect presets
+npm test          # route guards + all 26 effect presets
 ```
 
 `npm test` needs no network and no credentials — it exercises the handlers'

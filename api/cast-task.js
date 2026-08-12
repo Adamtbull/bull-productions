@@ -80,6 +80,14 @@ export default async function handler(req, res) {
     }
 
     if (stage === 'check') {
+      // Bail out before rigging burns credits on a mesh that will never rig —
+      // the classic cause is a photo with two people (or a busy background),
+      // which fuses into one blob Tripo can't put a skeleton in.
+      if (task.output?.riggable === false) {
+        return json(res, 502, {
+          error: "That photo doesn't rig as one person. Use a single person, head to toe, on a plain background, and build again.",
+        });
+      }
       const rigType = task.output?.rig_type || 'biped';
       const next = await tripo.startTask({
         type: 'animate_rig',

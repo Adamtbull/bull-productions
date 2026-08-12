@@ -89,6 +89,30 @@ for (const kind of ['props','cast']) {
   });
 }
 
+console.log('\n=== the director speaks the fight verbs ===');
+// The schema only reaches the API on a live call, so hold the source to the
+// contract instead: every verb the frontend schedules must be offered to the
+// model, and structured outputs demand every property is listed as required.
+const { readFileSync } = await import('node:fs');
+const directSrc = readFileSync(`${dir}/direct.js`, 'utf8');
+for (const verb of ['act', 'give', 'drop', 'throw']) {
+  await check(`direct schema offers "${verb}"`, async () => {
+    if (!directSrc.includes(`'${verb}'`)) throw new Error(`${verb} missing from direct.js`);
+  });
+}
+await check('direct schema requires the new fields', async () => {
+  for (const f of ["'clip'", "'to'", "'at'"]) {
+    if (!directSrc.includes(f)) throw new Error(`${f} missing from schema`);
+  }
+  if (!/required: \['verb', 'target', 'start', 'dur', 'x', 'z', 'type', 'speed', 'clip', 'to', 'at'\]/.test(directSrc)) {
+    throw new Error('required list does not cover every property');
+  }
+});
+await check('cast-task bails out when the rig check says not riggable', async () => {
+  const src = readFileSync(`${dir}/cast-task.js`, 'utf8');
+  if (!src.includes('riggable === false')) throw new Error('riggable guard missing');
+});
+
 console.log('\n=== props-proxy refuses non-allowlisted hosts (SSRF guard) ===');
 for (const [u, why] of [['http://169.254.169.254/latest/meta-data/','cloud metadata'],
   ['https://evil.example.com/x.glb','arbitrary host'],['not-a-url','malformed']]) {
