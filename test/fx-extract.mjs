@@ -14,8 +14,13 @@ const THREE = {
   ShaderMaterial: class { constructor(o){Object.assign(this,o);} dispose(){} },
   CanvasTexture: class {}, AdditiveBlending: 1, NormalBlending: 2,
 };
-const document = { createElement: () => ({ width:0, height:0, getContext: () => ({
-  createRadialGradient: () => ({ addColorStop(){} }), fillRect(){}, set fillStyle(v){} }) }) };
+// The sprite drawings use a fair slice of the 2D canvas API, so the stub is a
+// catch-all: every method exists and does nothing, every gradient accepts stops.
+const ctxStub = new Proxy({}, {
+  get: () => (..._a) => ({ addColorStop() {} }),
+  set: () => true,
+});
+const document = { createElement: () => ({ width: 0, height: 0, getContext: () => ctxStub }) };
 const scene3 = { add(){}, remove(){} };
 let placedGroup = { children: [] };
 

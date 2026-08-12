@@ -105,6 +105,9 @@ const r = await page.evaluate(() => {
     fxOptions: opts.length,
     fxGroups: groups,
     burstBtn: !!document.getElementById('fx-burst'),
+    lookOptions: document.querySelectorAll('#look-select option').length,
+    lookOverlays: ['fx-vignette','fx-grain','letter-top','letter-bottom','fx-flash']
+      .every(id => !!document.getElementById(id)),
     directBox: !!document.getElementById('direct-input'),
     castStrip: !!document.getElementById('cast-strip'),
     handlerWired: !!(document.getElementById('fx-select') || {}).onchange,
@@ -114,15 +117,17 @@ const r = await page.evaluate(() => {
 console.log('=== browser smoke test ===');
 console.log('  title           :', r.title);
 console.log('  fx select       :', r.fxSelect ? 'present' : 'MISSING');
-console.log('  fx options      :', r.fxOptions, '(1 "No effect" + 23 presets = 24 expected)');
+console.log('  fx options      :', r.fxOptions, '(1 "No effect" + 26 presets = 27 expected)');
 console.log('  fx groups       :', r.fxGroups.join('  '));
 console.log('  burst button    :', r.burstBtn ? 'present' : 'MISSING');
+console.log('  look options    :', r.lookOptions, '(7 expected)');
+console.log('  look overlays   :', r.lookOverlays ? 'all present' : 'MISSING');
 console.log('  onchange wired  :', r.handlerWired ? 'yes' : 'NO');
 console.log('  page errors     :', errors.length ? errors : 'none');
 console.log('  console errors  :', logs.length ? logs.slice(0,4) : 'none');
 
 await browser.close(); srv.close();
-const ok = r.fxOptions === 24 && r.fxSelect && r.burstBtn && r.handlerWired
+const ok = r.fxOptions === 27 && r.lookOptions === 7 && r.lookOverlays && r.fxSelect && r.burstBtn && r.handlerWired
   && errors.length === 0 && r.castStrip && castOk;
 console.log(ok ? '\nPASS — page boots, effects UI builds, cast panel opens with 4 gated slots, no runtime errors' : '\nFAIL');
 process.exit(ok ? 0 : 1);

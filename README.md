@@ -35,10 +35,16 @@ via an importmap. It is served as-is.
   Rigs carry idle, walk, run, hurt and fall clips.
 - **Motion and entrances** — float, bob, spin, orbit; fade, rise, pop, materialise.
   Action staggers them so a take reads as one sequence.
-- **Effects** — 23 per-item particle effects. 18 continuous (fire, torch, campfire,
+- **Effects** — 26 per-item particle effects. 19 continuous (fire, torch, campfire,
   blue flame, smoke, steam, dust, sparks, embers, fireflies, glow, magic, arcane
-  swirl, portal, energy shield, rain, snow, bubbles) and 5 one-shot hits
-  (explosion, impact, dust puff, shockwave, magic nova).
+  swirl, portal, energy shield, rain, snow, bubbles, power aura) and 7 one-shot
+  hits (explosion, impact, dust puff, shockwave, magic nova, comic hit, lens
+  flare). Hits also punch the camera — screen shake and a white flash.
+- **Looks** — whole-frame movie styles from a picker in the filming strip:
+  Blockbuster, Anime, Cartoon, Claymation, Comic and Noir. A look grades the
+  splat room, swaps placed items to toon shading where it suits, and layers
+  grain, vignette and letterbox on top. Claymation runs the scene at 12
+  hand-wobbled frames a second, stop-motion style.
 - **Director** — type an instruction and Claude turns it into scheduled move,
   motion, appear, vanish and turn commands against the tagged items on set.
 - **Walk camera** — thumb stick to move, one-finger drag to look, ground-snapped
